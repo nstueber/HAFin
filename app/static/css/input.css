@@ -133,6 +133,22 @@
      tom-select.css' eigenes "border: 1px solid #d0d0d0" zu verlassen - sonst kann je nach
      Zustand (leer/fokussiert) ein zweiter, ungestylter Rahmen von einem inneren Element
      durchscheinen. */
+
+  /* Eigentliche Ursache des "doppelten Rahmens": Tom Select kopiert beim Initialisieren
+     die Klassen des urspruenglichen <select> (inkl. unserer .form-input-Klasse und bei
+     kompakten Selects wie der Kategorie-Auswahl zusaetzlich !-wichtige Utilities wie
+     !py-1.5/!text-xs) 1:1 auf seinen eigenen .ts-wrapper-Container. Dadurch bekommt der
+     WRAPPER selbst schon eine eigene Box (Rahmen/Padding von .form-input), und zusaetzlich
+     das innere .ts-control (Regel unten) noch eine eigene - zwei verschachtelte, durch
+     das Wrapper-Padding sichtbar getrennte Rahmen. Bei kompakten Selects (kleinere Gesamt-
+     hoehe) faellt der Abstand dazwischen besonders auf. Fix: .ts-wrapper selbst IMMER auf
+     eine unsichtbare Box zuruecksetzen (mit !important, da sonst gleich-wichtige kopierte
+     Utility-Klassen wie !py-1.5 weiterhin gewinnen wuerden) - sichtbar ist ausschliesslich
+     .ts-control. */
+  .ts-wrapper {
+    @apply !m-0 !border-0 !bg-transparent !p-0 !shadow-none;
+  }
+
   .ts-wrapper .ts-control {
     @apply rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900
       shadow-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100;

@@ -345,3 +345,25 @@ zu Tom Select konvertiert wurden - sichtbar als natives, unindiziertes
 `document` existiert dagegen von Anfang an, und htmx-Events blubbern ohnehin
 bis dorthin - kein weiterer Unterschied im Verhalten, nur die Registrierung
 funktioniert jetzt zuverlässig.
+
+**Der "doppelte Rahmen" bei Tom-Select-Feldern (endgültig behoben) hatte eine
+andere, rein CSS-basierte Ursache als zunächst vermutet:** Tom Select kopiert
+beim Initialisieren die Klassen des ursprünglichen `<select>` (inkl. unserer
+`.form-input`-Klasse und bei kompakten Selects wie der Kategorie-Auswahl
+zusätzlich `!`-wichtige Utilities wie `!py-1.5`/`!text-xs`) 1:1 auf seinen
+eigenen `.ts-wrapper`-Container. Dadurch bekam der Wrapper selbst schon eine
+eigene sichtbare Box (Rahmen/Padding von `.form-input`), zusätzlich zu der
+Box, die `.ts-wrapper .ts-control` ohnehin für das innere Control-Element
+setzt - zwei verschachtelte, durch das Wrapper-Padding sichtbar getrennte
+Rahmen. Das betraf technisch **alle** Tom-Select-Felder gleichermaßen
+(bestätigt auch für die Konto-/Mapping-Profil-Auswahl beim Import), fiel aber
+bei der kompakten Kategorie-Auswahl durch die insgesamt kleinere Boxhöhe
+deutlich mehr auf. Fix: `.ts-wrapper` selbst wird mit `!important` immer auf
+eine unsichtbare Box zurückgesetzt (`border-0 bg-transparent p-0
+shadow-none`) - `!important` ist hier nötig, weil sonst gleich-wichtige
+kopierte Utility-Klassen wie `!py-1.5` weiterhin gewinnen würden. Sichtbar ist
+danach ausschließlich `.ts-control`. Diagnostiziert per Playwright/Headless-
+Chromium: keine JavaScript-Fehler beim Initialisieren (die ursprüngliche
+Vermutung "Gruppierung + Suche wirft einen Fehler" war falsch), sondern ein
+inspizierbarer, reproduzierbarer CSS-Box-Model-Fehler (`getComputedStyle` auf
+`.ts-wrapper` zeigte Rahmen+Padding, wo eigentlich nichts sein sollte).
