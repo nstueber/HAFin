@@ -1,12 +1,10 @@
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
-from app.routers import accounts, categories, imports, mapping_profiles, transactions
-from app.templating import templates
+from app.routers import accounts, categories, dashboard, imports, mapping_profiles, transactions
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -14,6 +12,7 @@ app = FastAPI(title="Haushaltsbuch")
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
+app.include_router(dashboard.router)
 app.include_router(accounts.router)
 app.include_router(transactions.router)
 app.include_router(categories.router)
@@ -30,12 +29,3 @@ def on_startup() -> None:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
-
-
-@app.get("/", response_class=HTMLResponse)
-def index(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context={"title": "Übersicht", "active_nav": "overview"},
-    )

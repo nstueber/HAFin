@@ -196,6 +196,53 @@ aufklappbares `<details>`-Element umgesetzt (Klick auf die Überschrift
 klappt den gesamten Bereich ein/aus, kein JS nötig) und zeigt zu jeder Seite
 zusätzlich den Verwendungszweck an.
 
+## Dashboard/Übersicht
+
+Die Startseite (`/`, `app/routers/dashboard.py`) zeigt Kennzahlen und eine
+Kategorie-Aufschlüsselung für einen frei wählbaren Zeitraum.
+
+**Zeitraum:** Granularität Tag/Woche/Monat/Jahr (Standard beim Öffnen: aktueller
+Monat), mit Vor-/Zurück-Navigation per Pfeil-Buttons. Intern wird der Zeitraum
+über `granularity` + einen Anker-Tag `ref` (ISO-Datum) in der URL abgebildet -
+`_period_bounds()` berechnet daraus Start-/Enddatum, `_shift_ref()` den Anker
+für den vorherigen/nächsten Zeitraum (bei Monat/Jahr immer auf den 1. des
+Ziel-Monats/-Jahres normalisiert, nicht "gleicher Tag im Vormonat", um
+Edge-Cases wie den 31. zu vermeiden). Wechselt man nur die Granularität, bleibt
+der bisherige Anker-Tag erhalten und der neue Zeitraum wird um diesen Tag herum
+berechnet (z.B. Monat "September 2026" → Woche zeigt die Woche, die der 1.
+September enthält). Derselbe 3-Zustands-Umbuchungsfilter wie in der
+Buchungsansicht (Alle/Nur Umbuchungen/Ohne Umbuchungen) wirkt auf alle
+Kennzahlen unten.
+
+**Kennzahlen-Kacheln:** eine hervorgehobene Gesamt-Kachel (alle Konten) plus
+eine Kachel pro Konto, jeweils Einnahmen/Ausgaben/Netto für den gewählten
+Zeitraum. Diese Summen berücksichtigen ausnahmslos alle Buchungen im Zeitraum
+(nicht nach Kategorie gefiltert) - nur der Umbuchungsfilter wirkt hier.
+Ausgaben werden als positiver Betrag dargestellt (wie an anderer Stelle in der
+App), Netto mit Vorzeichen.
+
+**Kategorie-Aufschlüsselung:** horizontales Balkendiagramm via
+[Chart.js](https://www.chartjs.org/) (CDN, `cdn.jsdelivr.net`, kein Build-Schritt),
+absteigend nach Betrag sortiert. Unterkategorien werden in ihre Oberkategorie
+eingerechnet (`_top_level_category_id()`), unkategorisierte Buchungen laufen in
+einen eigenen Balken "Unkategorisiert" statt zu verschwinden. Angezeigt wird
+der Betrag pro Oberkategorie als Absolutwert (analog zur "Ausgaben als
+positiver Betrag"-Konvention der Kacheln) - eine Kategorie mit gemischten
+Vorzeichen würde sonst zu einem schwer lesbaren, in beide Richtungen
+ausschlagenden Balken führen. Farbpalette bewusst nicht Chart.js-Standard und
+ohne Blautöne (`app/templates/index.html`, `palette`-Array) - klar
+unterscheidbar vom HA-blauen Akzent, damit Balken nicht wie interaktive
+Elemente wirken; "Unkategorisiert" bekommt zusätzlich eine eigene, neutrale
+Graufarbe statt einer Palettenfarbe. Ein separater Konto-Filter (Tom Select,
+"Alle Konten" als Standard) filtert nur dieses Diagramm, nicht die
+Kennzahlen-Kacheln - technisch ein eigenes, sich per `onchange="this.form.submit()"`
+selbst absendendes GET-Formular mit den übrigen Filtern als Hidden-Inputs, da
+ein echtes Dropdown (statt Filter-Links wie beim Umbuchungsfilter) verlangt war.
+
+Bewusst nicht Teil dieser ersten Version: Vergleich zu Vorperioden, Trend über
+mehrere Zeiträume, Klick-Drilldown vom Balkendiagramm in die gefilterte
+Buchungsliste.
+
 ## IBAN-Anzeige
 
 IBANs werden intern kanonisch ohne Leerzeichen gespeichert, aber überall in
