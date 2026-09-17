@@ -1,16 +1,20 @@
+from collections import defaultdict
 from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.database import engine, get_session
 from app.models import (
     Account,
+    BARGELD_CATEGORY_NAME,
     Category,
     RejectedTransferPair,
     Transaction,
+    TransactionSplit,
     TransactionType,
     UMBUCHUNG_CATEGORY_NAME,
 )
@@ -69,6 +73,23 @@ def _get_or_create_umbuchung_category(session: Session) -> Category:
         session.commit()
         session.refresh(category)
     return category
+
+
+def _bargeld_category_id(session: Session) -> Optional[int]:
+    category = session.exec(select(Category).where(Category.name == BARGELD_CATEGORY_NAME)).first()
+    return category.id if category else None
+
+
+def _splits_by_transaction(session: Session, transaction_ids: list[int]) -> dict:
+    if not transaction_ids:
+        return {}
+    splits = session.exec(
+        select(TransactionSplit).where(TransactionSplit.transaction_id.in_(transaction_ids))
+    ).all()
+    by_txn: dict[int, list[TransactionSplit]] = defaultdict(list)
+    for s in splits:
+        by_txn[s.transaction_id].append(s)
+    return by_txn
 
 
 def backfill_umbuchung_categories() -> None:
@@ -245,6 +266,8 @@ def _build_row(
     accounts_by_id: dict,
     categories_by_id: dict,
     rejected_pairs: set,
+    bargeld_category_id: Optional[int] = None,
+    splits_by_txn_id: Optional[dict] = None,
 ) -> dict:
     suggested_id = _suggested_category_id(session, txn) if txn.category_id is None else None
 
@@ -260,6 +283,8 @@ def _build_row(
         for c in _transfer_candidates(session, txn, rejected_pairs)
     ]
 
+    splits = (splits_by_txn_id or {}).get(txn.id, [])
+
     return {
         "txn": txn,
         "account": accounts_by_id.get(txn.account_id),
@@ -267,22 +292,51 @@ def _build_row(
         "counter_txn": counter_txn,
         "counter_account": counter_account,
         "transfer_candidates": transfer_candidates,
+        "is_bargeld": bargeld_category_id is not None and txn.category_id == bargeld_category_id,
+        "split_count": len(splits),
     }
 
 
-def _render_row_html(
-    session: Session, txn: Transaction, oob: bool, uncategorized_only: bool = False
-) -> str:
+def _render_row_html(session: Session, txn: Transaction, oob: bool) -> str:
     accounts_by_id, categories_by_id = _lookup_dicts(session)
     rejected_pairs = _load_rejected_pairs(session)
-    row = _build_row(session, txn, accounts_by_id, categories_by_id, rejected_pairs)
-    template = templates.env.get_template("transactions/_row.html")
-    return template.render(
-        row=row,
-        category_groups=_category_groups(session),
-        oob=oob,
-        uncategorized_only=uncategorized_only,
+    bargeld_category_id = _bargeld_category_id(session)
+    splits_by_txn_id = _splits_by_transaction(session, [txn.id])
+    row = _build_row(
+        session,
+        txn,
+        accounts_by_id,
+        categories_by_id,
+        rejected_pairs,
+        bargeld_category_id,
+        splits_by_txn_id,
     )
+    template = templates.env.get_template("transactions/_row.html")
+    return template.render(row=row, category_groups=_category_groups(session), oob=oob)
+
+
+def _apply_transaction_filters(query, uncategorized: bool, transfers: str):
+    if uncategorized:
+        query = query.where(Transaction.category_id.is_(None))
+    if transfers == "hide":
+        query = query.where(Transaction.transaction_type != TransactionType.UMBUCHUNG)
+    elif transfers == "only":
+        query = query.where(Transaction.transaction_type == TransactionType.UMBUCHUNG)
+    return query
+
+
+def _filtered_query(uncategorized: bool, transfers: str):
+    return _apply_transaction_filters(select(Transaction), uncategorized, transfers)
+
+
+def _count_transactions(session: Session, uncategorized: bool, transfers: str) -> int:
+    # select(func.count()).select_from(...) statt select(Transaction).with_only_columns(...):
+    # Letzteres verliert beim Spaltenaustausch die implizite FROM-Klausel (ergibt
+    # "SELECT count(*)" ganz ohne "FROM transaction" und damit ein falsches Ergebnis).
+    query = _apply_transaction_filters(
+        select(func.count()).select_from(Transaction), uncategorized, transfers
+    )
+    return session.exec(query).one()
 
 
 @router.get("", response_class=HTMLResponse)
@@ -295,20 +349,26 @@ def list_transactions(
     if transfers not in ("all", "only", "hide"):
         transfers = "all"
 
-    query = select(Transaction).order_by(Transaction.booking_date.desc(), Transaction.id.desc())
-    if uncategorized:
-        query = query.where(Transaction.category_id.is_(None))
-    if transfers == "hide":
-        query = query.where(Transaction.transaction_type != TransactionType.UMBUCHUNG)
-    elif transfers == "only":
-        query = query.where(Transaction.transaction_type == TransactionType.UMBUCHUNG)
-    query = query.limit(LIST_LIMIT)
+    query = _filtered_query(uncategorized, transfers).order_by(
+        Transaction.booking_date.desc(), Transaction.id.desc()
+    ).limit(LIST_LIMIT)
     transactions = session.exec(query).all()
+    total_count = _count_transactions(session, uncategorized, transfers)
 
     accounts_by_id, categories_by_id = _lookup_dicts(session)
     rejected_pairs = _load_rejected_pairs(session)
+    bargeld_category_id = _bargeld_category_id(session)
+    splits_by_txn_id = _splits_by_transaction(session, [t.id for t in transactions])
     rows = [
-        _build_row(session, t, accounts_by_id, categories_by_id, rejected_pairs)
+        _build_row(
+            session,
+            t,
+            accounts_by_id,
+            categories_by_id,
+            rejected_pairs,
+            bargeld_category_id,
+            splits_by_txn_id,
+        )
         for t in transactions
     ]
 
@@ -330,6 +390,8 @@ def list_transactions(
             "url_uncategorized_toggle": _filter_url(not uncategorized, transfers),
             "suggestions": all_suggestions[:SUGGESTIONS_LIMIT],
             "suggestions_total": len(all_suggestions),
+            "visible_count": len(rows),
+            "total_count": total_count,
             "limit": LIST_LIMIT,
         },
     )
@@ -340,7 +402,6 @@ def set_transaction_category(
     request: Request,
     transaction_id: int,
     category_id: str = Form(""),
-    uncategorized: bool = False,
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     txn = session.get(Transaction, transaction_id)
@@ -349,14 +410,7 @@ def set_transaction_category(
         session.add(txn)
         session.commit()
         session.refresh(txn)
-    # Wenn der Filter "Nur unkategorisierte" aktiv ist und die Buchung gerade
-    # eine Kategorie bekommen hat, passt die Zeile nicht mehr zum Filter -
-    # sofort ausblenden statt sie (fehlerhaft weiterhin sichtbar) neu zu rendern.
-    if uncategorized and txn.category_id is not None:
-        return HTMLResponse(content="")
-    return HTMLResponse(
-        content=_render_row_html(session, txn, oob=False, uncategorized_only=uncategorized)
-    )
+    return HTMLResponse(content=_render_row_html(session, txn, oob=False))
 
 
 @router.post("/bulk-category", response_class=HTMLResponse)
@@ -364,7 +418,6 @@ def bulk_set_category(
     request: Request,
     transaction_ids: list[int] = Form(default=[]),
     bulk_category_id: str = Form(""),
-    uncategorized: bool = False,
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     category_id = int(bulk_category_id) if bulk_category_id else None
@@ -383,14 +436,7 @@ def bulk_set_category(
     html = ""
     for txn in txns:
         session.refresh(txn)
-        if uncategorized and txn.category_id is not None:
-            # "delete"-OOB-Swap statt "true": entfernt die Zeile ganz aus dem DOM,
-            # anstatt sie durch eine leere <tr> zu ersetzen.
-            html += f'<tr id="transaction-row-{txn.id}" hx-swap-oob="delete"></tr>'
-        else:
-            html += _render_row_html(
-                session, txn, oob=True, uncategorized_only=uncategorized
-            )
+        html += _render_row_html(session, txn, oob=True)
     return HTMLResponse(content=html)
 
 
@@ -521,4 +567,102 @@ def unlink_transfer(
     if counter is not None:
         session.refresh(counter)
         html += _render_row_html(session, counter, oob=True)
+    return HTMLResponse(content=html)
+
+
+def _split_form_context(session: Session, txn: Transaction, form_error: str = "") -> dict:
+    splits = session.exec(
+        select(TransactionSplit)
+        .where(TransactionSplit.transaction_id == txn.id)
+        .order_by(TransactionSplit.id)
+    ).all()
+    categories_by_id = {c.id: c for c in session.exec(select(Category)).all()}
+    split_rows = [
+        {
+            "amount_magnitude": abs(s.amount),
+            "category_id": s.category_id,
+        }
+        for s in splits
+    ]
+    allocated = sum(abs(s.amount) for s in splits)
+    remaining_magnitude = abs(txn.amount) - allocated
+    return {
+        "txn": txn,
+        "split_rows": split_rows,
+        "remaining_magnitude": remaining_magnitude,
+        "original_magnitude": abs(txn.amount),
+        "category_groups": _category_groups(session),
+        "form_error": form_error,
+    }
+
+
+@router.get("/{transaction_id}/split-form", response_class=HTMLResponse)
+def split_form(
+    request: Request, transaction_id: int, session: Session = Depends(get_session)
+) -> HTMLResponse:
+    txn = session.get(Transaction, transaction_id)
+    return templates.TemplateResponse(
+        request=request,
+        name="transactions/_split_form.html",
+        context=_split_form_context(session, txn),
+    )
+
+
+@router.post("/{transaction_id}/splits", response_class=HTMLResponse)
+def save_splits(
+    request: Request,
+    transaction_id: int,
+    split_amount: list[str] = Form(default=[]),
+    split_category_id: list[str] = Form(default=[]),
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    txn = session.get(Transaction, transaction_id)
+    sign = 1 if txn.amount >= 0 else -1
+
+    new_splits: list[tuple[float, int]] = []
+    total_magnitude = 0.0
+    for amount_str, category_str in zip(split_amount, split_category_id):
+        amount_str = amount_str.strip()
+        if not amount_str or not category_str:
+            continue
+        try:
+            magnitude = abs(float(amount_str.replace(",", ".")))
+        except ValueError:
+            continue
+        if magnitude <= 0:
+            continue
+        total_magnitude += magnitude
+        new_splits.append((sign * magnitude, int(category_str)))
+
+    if total_magnitude > abs(txn.amount) + 1e-9:
+        return templates.TemplateResponse(
+            request=request,
+            name="transactions/_split_form.html",
+            context=_split_form_context(
+                session,
+                txn,
+                form_error="Die Summe der Aufteilungen darf den Betrag der Original-Buchung nicht übersteigen.",
+            ),
+            status_code=400,
+        )
+
+    # Bestehende Splits vollstaendig ersetzen - einfachstes robustes Muster fuer
+    # "speichere den gesamten Formularzustand auf einmal" (Zeilen hinzufuegen/
+    # aendern/entfernen laeuft alles ueber denselben Save-Aufruf).
+    existing = session.exec(
+        select(TransactionSplit).where(TransactionSplit.transaction_id == transaction_id)
+    ).all()
+    for s in existing:
+        session.delete(s)
+    for amount, category_id in new_splits:
+        session.add(
+            TransactionSplit(transaction_id=transaction_id, amount=amount, category_id=category_id)
+        )
+    session.commit()
+    session.refresh(txn)
+
+    html = templates.env.get_template("transactions/_split_form.html").render(
+        **_split_form_context(session, txn)
+    )
+    html += _render_row_html(session, txn, oob=True)
     return HTMLResponse(content=html)

@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse
 from sqlmodel import Session, select
 
 from app.database import get_session
-from app.models import Account, Category, Transaction, TransactionType
+from app.models import Account, Category, Transaction, TransactionSplit, TransactionType
 from app.templating import templates
 
 router = APIRouter(tags=["dashboard"])
@@ -104,12 +104,69 @@ def _top_level_category_id(
     return cat.parent_id if cat.parent_id is not None else cat.id
 
 
-def _category_breakdown(
-    txns: list[Transaction], categories_by_id: dict
-) -> list[dict]:
-    sums: dict = defaultdict(float)
+def _splits_by_transaction(session: Session, transaction_ids: list[int]) -> dict:
+    if not transaction_ids:
+        return {}
+    splits = session.exec(
+        select(TransactionSplit).where(TransactionSplit.transaction_id.in_(transaction_ids))
+    ).all()
+    by_txn: dict[int, list[TransactionSplit]] = defaultdict(list)
+    for s in splits:
+        by_txn[s.transaction_id].append(s)
+    return by_txn
+
+
+def _category_entries(txns: list[Transaction], categories_by_id: dict, splits_by_txn_id: dict) -> list[dict]:
+    """Zerlegt jede Buchung in einen oder mehrere (Oberkategorie, Betrag)-Eintraege.
+
+    Buchungen ohne Splits ergeben genau einen Eintrag (ihre eigene Kategorie,
+    voller Betrag). Buchungen MIT Splits (z.B. teilweise aufgeteiltes Bargeld)
+    ergeben mehrere Eintraege: den nicht aufgeteilten Rest bei der Original-
+    Kategorie plus je einen Eintrag pro Split bei dessen eigener Kategorie -
+    in Summe weiterhin exakt der Original-Betrag, keine Doppelzaehlung.
+    """
+    entries = []
     for t in txns:
-        sums[_top_level_category_id(t.category_id, categories_by_id)] += t.amount
+        splits = splits_by_txn_id.get(t.id, [])
+        if splits:
+            allocated = sum(s.amount for s in splits)
+            remainder = t.amount - allocated
+            entries.append(
+                {
+                    "top_category_id": _top_level_category_id(t.category_id, categories_by_id),
+                    "amount": remainder,
+                    "txn": t,
+                    "is_split_portion": False,
+                }
+            )
+            for s in splits:
+                entries.append(
+                    {
+                        "top_category_id": _top_level_category_id(s.category_id, categories_by_id),
+                        "amount": s.amount,
+                        "txn": t,
+                        "is_split_portion": True,
+                    }
+                )
+        else:
+            entries.append(
+                {
+                    "top_category_id": _top_level_category_id(t.category_id, categories_by_id),
+                    "amount": t.amount,
+                    "txn": t,
+                    "is_split_portion": False,
+                }
+            )
+    return entries
+
+
+def _category_breakdown(
+    txns: list[Transaction], categories_by_id: dict, splits_by_txn_id: dict
+) -> list[dict]:
+    entries = _category_entries(txns, categories_by_id, splits_by_txn_id)
+    sums: dict = defaultdict(float)
+    for e in entries:
+        sums[e["top_category_id"]] += e["amount"]
 
     items = []
     for cat_id, amount in sums.items():
@@ -199,7 +256,8 @@ def dashboard(
     breakdown_txns = [
         t for t in txns if account_id_int is None or t.account_id == account_id_int
     ]
-    chart_items = _category_breakdown(breakdown_txns, categories_by_id)
+    splits_by_txn_id = _splits_by_transaction(session, [t.id for t in breakdown_txns])
+    chart_items = _category_breakdown(breakdown_txns, categories_by_id, splits_by_txn_id)
     for item in chart_items:
         item["url"] = _drilldown_url(
             granularity, ref_date, transfers, account_id_int, "category", item["key"]
@@ -268,23 +326,58 @@ def dashboard_transactions(
         txns = [t for t in txns if t.account_id == account_id_int]
 
     categories_by_id = {c.id: c for c in session.exec(select(Category)).all()}
+    accounts_by_id = {a.id: a for a in session.exec(select(Account)).all()}
 
-    if kind == "income":
-        txns = [t for t in txns if t.amount > 0]
-    elif kind == "expense":
-        txns = [t for t in txns if t.amount < 0]
-    elif kind == "category":
-        def _matches_category(t: Transaction) -> bool:
-            top_id = _top_level_category_id(t.category_id, categories_by_id)
+    if kind in ("income", "expense", "net"):
+        # Einnahmen/Ausgaben/Netto sind unabhaengig von Kategorie-Splits (die
+        # Original-Buchung behaelt ihren vollen, unveraenderten Betrag) - hier
+        # zaehlt nur das Vorzeichen des tatsaechlichen Buchungsbetrags.
+        if kind == "income":
+            txns = [t for t in txns if t.amount > 0]
+        elif kind == "expense":
+            txns = [t for t in txns if t.amount < 0]
+        txns.sort(key=lambda t: (t.booking_date, t.id), reverse=True)
+        entries = [
+            {
+                "booking_date": t.booking_date,
+                "account_name": accounts_by_id[t.account_id].display_name
+                if t.account_id in accounts_by_id
+                else "–",
+                "payee": t.payee,
+                "purpose": t.purpose,
+                "amount": t.amount,
+                "is_split_portion": False,
+            }
+            for t in txns
+        ]
+    else:
+        # "category": beruecksichtigt Splits - eine teilweise aufgeteilte
+        # Bargeld-Buchung kann hier sowohl mit ihrem Rest (Original-Kategorie)
+        # als auch mit einem Split-Anteil (Ziel-Kategorie) auftauchen, jeweils
+        # nur mit dem tatsaechlich dieser Kategorie zugeordneten Teilbetrag.
+        splits_by_txn_id = _splits_by_transaction(session, [t.id for t in txns])
+        all_entries = _category_entries(txns, categories_by_id, splits_by_txn_id)
+
+        def _matches_category(top_id: Optional[int]) -> bool:
             if category == "uncategorized":
                 return top_id is None
             return category.isdigit() and top_id == int(category)
 
-        txns = [t for t in txns if _matches_category(t)]
-
-    txns.sort(key=lambda t: (t.booking_date, t.id), reverse=True)
-
-    accounts_by_id = {a.id: a for a in session.exec(select(Account)).all()}
+        matching = [e for e in all_entries if _matches_category(e["top_category_id"])]
+        matching.sort(key=lambda e: (e["txn"].booking_date, e["txn"].id), reverse=True)
+        entries = [
+            {
+                "booking_date": e["txn"].booking_date,
+                "account_name": accounts_by_id[e["txn"].account_id].display_name
+                if e["txn"].account_id in accounts_by_id
+                else "–",
+                "payee": e["txn"].payee,
+                "purpose": e["txn"].purpose,
+                "amount": e["amount"],
+                "is_split_portion": e["is_split_portion"],
+            }
+            for e in matching
+        ]
 
     title_map = {
         "income": "Einnahmen",
@@ -305,7 +398,6 @@ def dashboard_transactions(
         context={
             "heading": title_map[kind],
             "period_label": _period_label(granularity, start, end),
-            "transactions": txns,
-            "accounts_by_id": accounts_by_id,
+            "entries": entries,
         },
     )

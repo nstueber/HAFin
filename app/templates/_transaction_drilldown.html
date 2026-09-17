@@ -1,33 +1,52 @@
-<h3 class="text-base font-semibold">{{ heading }}</h3>
-<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ period_label }} · {{ transactions|length }} Buchung{{ 'en' if transactions|length != 1 else '' }}</p>
+{% from "_table.html" import table_search, sort_th %}
 
-{% if transactions %}
-<div class="mt-4 max-h-96 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
-  <table class="table-base">
-    <thead>
-      <tr>
-        <th>Datum</th>
-        <th>Konto</th>
-        <th>Auftraggeber/Empfänger</th>
-        <th>Verwendungszweck</th>
-        <th class="text-right">Betrag</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for txn in transactions %}
-      <tr>
-        <td class="whitespace-nowrap font-mono text-xs">{{ txn.booking_date.isoformat() }}</td>
-        <td class="whitespace-nowrap text-xs">{{ accounts_by_id[txn.account_id].display_name if txn.account_id in accounts_by_id else "–" }}</td>
-        <td class="font-medium text-gray-900 dark:text-gray-100">{{ txn.payee }}</td>
-        <td class="max-w-xs truncate text-xs text-gray-500 dark:text-gray-400" title="{{ txn.purpose or '' }}">{{ txn.purpose or "–" }}</td>
-        <td class="whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if txn.amount > 0 else '' }}">
-          {{ "%.2f"|format(txn.amount) }}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<h3 class="text-base font-semibold">{{ heading }}</h3>
+<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+  {{ period_label }} · Zeige <span id="drilldown-count">{{ entries|length }}</span> von {{ entries|length }} Buchungen
+</p>
+
+{% if entries %}
+<div id="drilldown-table" class="mt-4">
+  <div class="mb-3">
+    {{ table_search("Buchungen durchsuchen…") }}
+  </div>
+  <div class="max-h-96 overflow-y-auto overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
+    <table class="table-base">
+      <thead>
+        <tr>
+          {{ sort_th("Datum", "date") }}
+          {{ sort_th("Konto", "account") }}
+          {{ sort_th("Auftraggeber/Empfänger", "payee") }}
+          {{ sort_th("Verwendungszweck", "purpose") }}
+          {{ sort_th("Betrag", "amount", "text-right") }}
+        </tr>
+      </thead>
+      <tbody class="list">
+        {% for e in entries %}
+        <tr>
+          <td class="date whitespace-nowrap font-mono text-xs">{{ e.booking_date.isoformat() }}</td>
+          <td class="account whitespace-nowrap text-xs">{{ e.account_name }}</td>
+          <td class="payee font-medium text-gray-900 dark:text-gray-100">
+            {{ e.payee }}
+            {% if e.is_split_portion %}
+            <span class="ml-1 rounded bg-accent/10 px-1.5 py-0.5 text-[0.65rem] font-medium text-accent" title="Anteil einer aufgeteilten Bargeld-Buchung">Split</span>
+            {% endif %}
+          </td>
+          <td class="purpose max-w-xs truncate text-xs text-gray-500 dark:text-gray-400" title="{{ e.purpose or '' }}">{{ e.purpose or "–" }}</td>
+          <td class="amount whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if e.amount > 0 else '' }}">
+            {{ "%.2f"|format(e.amount) }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+<script>
+  (function () {
+    hafinInitTable("drilldown-table", ["date", "account", "payee", "purpose", "amount"], "drilldown-count");
+  })();
+</script>
 {% else %}
 <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">Keine Buchungen gefunden.</p>
 {% endif %}

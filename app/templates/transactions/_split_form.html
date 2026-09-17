@@ -1,0 +1,129 @@
+{% from "_icons.html" import trash %}
+
+<h3 class="text-base font-semibold">Bargeld aufteilen</h3>
+<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+  {{ txn.booking_date.isoformat() }} · {{ txn.payee }} ·
+  Betrag: <span class="font-mono">{{ "%.2f"|format(txn.amount) }}</span>
+</p>
+
+{% if form_error %}
+<div class="alert-error mt-4">{{ form_error }}</div>
+{% endif %}
+
+<form
+  id="split-form"
+  hx-post="/transactions/{{ txn.id }}/splits"
+  hx-target="#split-dialog-content"
+  hx-swap="innerHTML"
+  class="mt-4"
+>
+  <div id="split-rows" class="space-y-3">
+    {% for row in split_rows %}
+    <div class="split-row flex items-center gap-2">
+      <input
+        type="number" step="0.01" min="0" name="split_amount"
+        value="{{ "%.2f"|format(row.amount_magnitude) }}"
+        class="form-input split-amount-input w-28 !py-1.5 !text-xs"
+      />
+      <select name="split_category_id" data-searchable class="form-input !py-1.5 !text-xs flex-1">
+        <option value="">– Kategorie wählen –</option>
+        {% for group in category_groups %}
+          {% if group.children %}
+          <optgroup label="{{ group.name }}">
+            <option value="{{ group.id }}" {% if row.category_id == group.id %}selected{% endif %}>{{ group.name }} (allgemein)</option>
+            {% for child in group.children %}
+            <option value="{{ child.id }}" {% if row.category_id == child.id %}selected{% endif %}>{{ child.name }}</option>
+            {% endfor %}
+          </optgroup>
+          {% else %}
+          <option value="{{ group.id }}" {% if row.category_id == group.id %}selected{% endif %}>{{ group.name }}</option>
+          {% endif %}
+        {% endfor %}
+      </select>
+      <button type="button" class="btn-ghost-icon split-remove-btn" aria-label="Entfernen">{{ trash() }}</button>
+    </div>
+    {% endfor %}
+  </div>
+
+  <button type="button" id="split-add-row" class="btn-outline !px-3 !py-1.5 !text-xs mt-3">
+    + Zeile hinzufügen
+  </button>
+
+  <div class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-800">
+    <span class="text-gray-600 dark:text-gray-400">Verbleibender Rest (bleibt "Bargeld")</span>
+    <span
+      id="split-remaining"
+      class="font-mono font-semibold {{ 'text-red-600 dark:text-red-400' if remaining_magnitude < 0 else '' }}"
+      data-original="{{ original_magnitude }}"
+    >
+      {{ "%.2f"|format(remaining_magnitude) }}
+    </span>
+  </div>
+
+  <div class="mt-5 flex justify-end gap-3">
+    <button type="button" class="btn-outline" onclick="document.getElementById('split-dialog').close()">
+      Schließen
+    </button>
+    <button type="submit" class="btn-primary">Speichern</button>
+  </div>
+</form>
+
+<template id="split-row-template">
+  <div class="split-row flex items-center gap-2">
+    <input type="number" step="0.01" min="0" name="split_amount" value="" class="form-input split-amount-input w-28 !py-1.5 !text-xs" />
+    <select name="split_category_id" data-searchable class="form-input !py-1.5 !text-xs flex-1">
+      <option value="">– Kategorie wählen –</option>
+      {% for group in category_groups %}
+        {% if group.children %}
+        <optgroup label="{{ group.name }}">
+          <option value="{{ group.id }}">{{ group.name }} (allgemein)</option>
+          {% for child in group.children %}
+          <option value="{{ child.id }}">{{ child.name }}</option>
+          {% endfor %}
+        </optgroup>
+        {% else %}
+        <option value="{{ group.id }}">{{ group.name }}</option>
+        {% endif %}
+      {% endfor %}
+    </select>
+    <button type="button" class="btn-ghost-icon split-remove-btn" aria-label="Entfernen">{{ trash() }}</button>
+  </div>
+</template>
+
+<script>
+  (function () {
+    var container = document.getElementById("split-rows");
+    var remainingEl = document.getElementById("split-remaining");
+    var originalMagnitude = parseFloat(remainingEl.getAttribute("data-original"));
+
+    function recomputeRemaining() {
+      var sum = 0;
+      container.querySelectorAll(".split-amount-input").forEach(function (input) {
+        var v = parseFloat(input.value);
+        if (!isNaN(v)) sum += Math.abs(v);
+      });
+      var remaining = originalMagnitude - sum;
+      remainingEl.textContent = remaining.toFixed(2);
+      remainingEl.classList.toggle("text-red-600", remaining < 0);
+      remainingEl.classList.toggle("dark:text-red-400", remaining < 0);
+    }
+
+    container.addEventListener("input", function (e) {
+      if (e.target.classList.contains("split-amount-input")) recomputeRemaining();
+    });
+
+    container.addEventListener("click", function (e) {
+      var btn = e.target.closest(".split-remove-btn");
+      if (!btn) return;
+      btn.closest(".split-row").remove();
+      recomputeRemaining();
+    });
+
+    document.getElementById("split-add-row").addEventListener("click", function () {
+      var tpl = document.getElementById("split-row-template");
+      var clone = tpl.content.cloneNode(true);
+      container.appendChild(clone);
+      if (window.hafinInitSearchableSelects) window.hafinInitSearchableSelects();
+    });
+  })();
+</script>

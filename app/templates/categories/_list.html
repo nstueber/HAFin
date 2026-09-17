@@ -12,7 +12,7 @@
     <a href="/categories/{{ cat.id }}/edit" class="btn-ghost-icon" aria-label="Bearbeiten">
       {{ pencil() }}
     </a>
-    {% if cat.name != umbuchung_category_name %}
+    {% if cat.name not in protected_category_names %}
     <button
       type="button"
       class="btn-ghost-icon"

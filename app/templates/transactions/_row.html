@@ -26,7 +26,7 @@
       name="category_id"
       data-searchable
       class="form-input !py-1.5 !text-xs"
-      hx-post="/transactions/{{ row.txn.id }}/category?uncategorized={{ 'true' if uncategorized_only else 'false' }}"
+      hx-post="/transactions/{{ row.txn.id }}/category"
       hx-trigger="change"
       hx-target="#transaction-row-{{ row.txn.id }}"
       hx-swap="outerHTML"
@@ -49,13 +49,29 @@
     <button
       type="button"
       class="mt-1 block text-left text-xs text-accent hover:underline"
-      hx-post="/transactions/{{ row.txn.id }}/category?uncategorized={{ 'true' if uncategorized_only else 'false' }}"
+      hx-post="/transactions/{{ row.txn.id }}/category"
       hx-target="#transaction-row-{{ row.txn.id }}"
       hx-swap="outerHTML"
       hx-vals='{"category_id": "{{ row.suggested_category.id }}"}'
     >
       Vorschlag: {{ row.suggested_category.name }} übernehmen
     </button>
+    {% endif %}
+    {% if row.is_bargeld %}
+    <div class="mt-1 text-xs">
+      {% if row.split_count %}
+      <span class="mr-1 inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 font-medium text-accent" title="{{ row.split_count }} Aufteilung(en)">
+        Aufgeteilt ({{ row.split_count }})
+      </span>
+      {% endif %}
+      <button
+        type="button"
+        class="text-accent hover:underline"
+        onclick="hafinOpenDialog('/transactions/{{ row.txn.id }}/split-form', 'split-dialog', 'split-dialog-content')"
+      >
+        Aufteilen{% if row.split_count %} bearbeiten{% endif %}
+      </button>
+    </div>
     {% endif %}
     {% endif %}
   </td>

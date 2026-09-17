@@ -14,10 +14,74 @@
     });
   };
 
-  window.hafinInitTable = function (containerId, valueNames) {
+  // List.js' eingebaute Suche (Version 2.3.1) hat zwei Bugs: (1) sie escaped
+  // Regex-Sonderzeichen im Suchstring ("-", "+", ".", ...), vergleicht intern
+  // aber trotzdem nur per einfachem indexOf() statt per Regex - das escapte
+  // "\-" taucht im echten Text nie auf, daher liefert z.B. "-" nie Treffer;
+  // (2) ihre eigene keyup/input-Bindung setzt die Liste beim Leeren des Felds
+  // nicht zuverlässig zurück (u.a. beim Klick auf das native <input type=search>-
+  // Clear-Icon, das nur ein "input"-, kein "keyup"-Event ausloest, in Kombination
+  // mit ihrer eigenen "alreadyCleared"-Sonderbehandlung). Deshalb binden wir hier
+  // eine eigene, robuste Suche: einfacher literaler Teilstring-Vergleich, ausgeloest
+  // durch ein einzelnes "input"-Event (deckt Tippen, Backspace-bis-leer, Markieren+
+  // Entf und den nativen Clear-Button gleichermaßen ab).
+  function hafinMakeSearchFn(list) {
+    return function (searchString, columns) {
+      // searchString durchlief bereits List.js' eigene (fehlerhafte) Escape-Logik -
+      // Backslashes vor Regex-Sonderzeichen wieder entfernen, um den literalen
+      // Originaltext zurückzubekommen.
+      var query = searchString.replace(/\\([-[\]{}()*+?.,\\^$|#])/g, "$1");
+      for (var k = 0; k < list.items.length; k++) {
+        var item = list.items[k];
+        var found = false;
+        if (query.length) {
+          var values = item.values();
+          for (var j = 0; j < columns.length; j++) {
+            var col = columns[j];
+            if (values.hasOwnProperty(col) && values[col] !== undefined && values[col] !== null) {
+              var text = typeof values[col] === "string" ? values[col] : String(values[col]);
+              if (text.toLowerCase().indexOf(query) !== -1) {
+                found = true;
+                break;
+              }
+            }
+          }
+        }
+        item.found = found;
+      }
+    };
+  }
+
+  window.hafinInitTable = function (containerId, valueNames, countElementId) {
     var el = document.getElementById(containerId);
-    if (!el || window.hafinLists[containerId]) return;
-    window.hafinLists[containerId] = new List(containerId, { valueNames: valueNames });
+    if (!el) return;
+    var existing = window.hafinLists[containerId];
+    // Bereits initialisiert UND die Instanz gehoert noch zu einem Container, der
+    // wirklich noch im DOM haengt (nicht der Fall z.B. wenn ein Dialog-Inhalt per
+    // htmx-innerHTML-Swap komplett neu aufgebaut wurde, aber dieselbe Container-ID
+    // wiederverwendet) - dann nicht doppelt initialisieren.
+    if (existing && existing.listContainer && document.body.contains(existing.listContainer)) {
+      return;
+    }
+    var list = new List(containerId, { valueNames: valueNames });
+    window.hafinLists[containerId] = list;
+
+    var searchInput = el.querySelector(".hafin-search-input");
+    if (searchInput) {
+      var customSearch = hafinMakeSearchFn(list);
+      searchInput.addEventListener("input", function () {
+        list.search(searchInput.value, customSearch);
+      });
+    }
+
+    if (countElementId) {
+      var countEl = document.getElementById(countElementId);
+      if (countEl) {
+        list.on("updated", function () {
+          countEl.textContent = list.matchingItems.length;
+        });
+      }
+    }
   };
 
   function reindexAllTables() {
@@ -39,6 +103,10 @@
       });
     });
   }
+  // Oeffentlich verfuegbar fuer Faelle, in denen neue <select data-searchable>-
+  // Elemente per reinem JS (nicht per htmx-Swap) ins DOM eingefuegt werden, z.B.
+  // eine per JS geklonte Split-Zeile im Bargeld-Aufteilen-Formular.
+  window.hafinInitSearchableSelects = initSearchableSelects;
 
   document.addEventListener("DOMContentLoaded", initSearchableSelects);
 
@@ -73,13 +141,20 @@
     updateBulkAssignButton(checked.length);
   }
 
+  // Dieselben Klassen wie der aktive Zustand des "Nur unkategorisierte"-Buttons
+  // (siehe transactions/list.html), damit beide Toggle-Buttons konsistent aussehen.
+  var MULTISELECT_ACTIVE_CLASSES = ["!border-accent", "!text-accent"];
+
   document.addEventListener("click", function (e) {
     var toggle = e.target.closest && e.target.closest("[data-multiselect-toggle]");
     if (!toggle) return;
     var table = document.querySelector(toggle.getAttribute("data-multiselect-toggle"));
     if (!table) return;
     table.classList.toggle("show-ms");
-    if (!table.classList.contains("show-ms")) {
+    var active = table.classList.contains("show-ms");
+    toggle.classList.toggle(MULTISELECT_ACTIVE_CLASSES[0], active);
+    toggle.classList.toggle(MULTISELECT_ACTIVE_CLASSES[1], active);
+    if (!active) {
       // Modus verlassen: Auswahl zuruecksetzen, Aktionsleiste ausblenden.
       document.querySelectorAll(".ms-checkbox:checked").forEach(function (cb) {
         cb.checked = false;

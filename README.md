@@ -125,8 +125,12 @@ mit den konkreten Konsequenzen gezeigt:
   eigenständigen Oberkategorien (nicht mitgelöscht, nicht blockiert).
 - Sind der Kategorie Buchungen zugeordnet, wird deren Anzahl angezeigt - beim
   Bestätigen werden genau diese Buchungen unkategorisiert (nicht mitgelöscht).
-- Die automatisch angelegte, feste Kategorie "Umbuchung" hat gar keinen
-  Löschen-Button (weder in der Liste noch serverseitig löschbar).
+- Die automatisch angelegten, festen Kategorien "Umbuchung" und "Bargeld"
+  haben gar keinen Löschen-Button (weder in der Liste noch serverseitig
+  löschbar, `PROTECTED_CATEGORY_NAMES` in `app/models/category.py`). Beide
+  werden bereits beim App-Start angelegt (`categories.ensure_system_categories()`),
+  damit sie von Anfang an in jeder Kategorie-Auswahl auftauchen und nicht erst
+  nach einem auslösenden Ereignis wie der ersten Umbuchungs-Verknüpfung.
 
 **Export/Import** (JSON, `/categories/export` bzw. `/categories/import`):
 Export bildet die Ober-/Unterkategorie-Hierarchie 1:1 ab
@@ -137,22 +141,32 @@ innerhalb derselben, ebenfalls abgeglichenen Oberkategorie) - Treffer werden
 Zusammenfassung ("X importiert, Y übersprungen") über der Kategorienliste,
 analog zum CSV-Import-Ergebnis.
 
-Unter „Buchungen" werden die neuesten 200 importierten Transaktionen gelistet
-(mit Filter „nur unkategorisierte anzeigen"). Jede Zeile hat ein
-Kategorie-Dropdown, das die Zuordnung per htmx sofort speichert, ohne die
-Seite neu zu laden - ist der Filter „nur unkategorisierte anzeigen" aktiv,
-verschwindet die Zeile in diesem Moment sofort aus der Liste (die
-Kategorie-Auswahl übermittelt den aktuellen Filterzustand als Query-Parameter
-an `/transactions/{id}/category`, die Antwort ist dann leer statt der
-neu gerenderten Zeile). Für noch unkategorisierte Buchungen wird zusätzlich
-ein Vorschlag angezeigt, wenn auf demselben Konto bereits eine andere Buchung
-mit identischem Betrag und Auftraggeber/Empfänger kategorisiert wurde - ein
-Klick übernimmt den Vorschlag, er wird nie automatisch gesetzt.
+Unter „Buchungen" zeigt die Kopfzeile „Zeige X von Y Buchungen": X ist die
+Anzahl der aktuell im DOM gerenderten (und ggf. durch die Textsuche weiter
+gefilterten) Zeilen, Y die tatsächliche Gesamtzahl aller Buchungen, die dem
+aktiven Server-Filter (Konto-/Umbuchungs-/Unkategorisiert-Filter) entsprechen -
+unabhängig von der 200-Zeilen-Begrenzung der Liste selbst, ermittelt über
+eine eigene `COUNT(*)`-Abfrage (`_count_transactions()` in `transactions.py`).
+X aktualisiert sich rein clientseitig live beim Tippen im Suchfeld (siehe
+List.js-Abschnitt unten), Y ändert sich nur bei einem echten Filterwechsel
+(neuer Seitenaufruf). Jede Zeile hat außerdem ein Kategorie-Dropdown, das die
+Zuordnung per htmx sofort speichert, ohne die Seite neu zu laden.
+Für noch unkategorisierte Buchungen wird zusätzlich ein Vorschlag angezeigt,
+wenn auf demselben Konto bereits eine andere Buchung mit identischem Betrag
+und Auftraggeber/Empfänger kategorisiert wurde - ein Klick übernimmt den
+Vorschlag, er wird nie automatisch gesetzt. Bewusst *kein* automatisches
+Ausblenden einer Buchung aus der aktuellen Ansicht, sobald ihr im Filter „nur
+unkategorisierte anzeigen" eine Kategorie zugewiesen wird (das gab es
+kurzzeitig, wurde aber auf Nutzerwunsch wieder entfernt, weil es wie ein
+störendes Springen der Liste wirkte) - die Liste synchronisiert sich erst
+wieder beim nächsten regulären Reload/Filterwechsel.
 
 **Mehrfachauswahl**: Button „Mehrfachauswahl" oberhalb der Liste blendet eine
 Checkbox-Spalte ein (rein clientseitig per CSS-Klassen-Toggle, siehe
 `.ms-cell`/`.show-ms` in `input.css` - keine serverseitige Bedingung pro
-Zeile nötig). Sobald mindestens eine Buchung angehakt ist, erscheint eine
+Zeile nötig) und bekommt dabei denselben aktiv-Style wie der „Nur
+unkategorisierte"-Button (`!border-accent !text-accent`), solange der Modus
+läuft. Sobald mindestens eine Buchung angehakt ist, erscheint eine
 Aktionsleiste mit Kategorie-Auswahl (Tom Select) und „Kategorie zuweisen"
 (`POST /transactions/bulk-category`, sammelt die angehakten Checkboxen via
 `hx-include`, ohne dass ein umschließendes `<form>` nötig wäre). Bereits
@@ -163,6 +177,29 @@ Auswahl und Aktionsleiste automatisch (jede betroffene Zeile wird per
 Out-of-Band-Swap frisch - und damit mit einer wieder unangehakten Checkbox -
 neu gerendert); der Mehrfachauswahl-Modus selbst bleibt bestehen, bis er
 manuell wieder über denselben Button verlassen wird.
+
+**Bargeld-Aufteilung**: Buchungen mit der festen Kategorie "Bargeld" bekommen
+in der Kategorie-Spalte einen zusätzlichen "Aufteilen"-Link (öffnet ein
+`<dialog>`-Modal, `GET/POST /transactions/{id}/split-form|splits`). Dort
+lassen sich beliebig viele Split-Zeilen (Betrag + Kategorie, Tom Select)
+hinzufügen - neue Zeilen werden rein clientseitig per `<template>`-Klonen
+eingefügt (`window.hafinInitSearchableSelects()` initialisiert das frisch
+geklonte `<select data-searchable>` nachträglich, da es nicht über einen
+htmx-Swap ins DOM kam). Ein Live-Rest-Betrag zeigt sofort, wie viel noch
+nicht aufgeteilt ist; serverseitig wird zusätzlich geprüft, dass die Summe
+der Splits den Original-Betrag nicht übersteigt (Beträge dürfen aber gerne
+nicht vollständig aufgehen - der Rest bleibt "Bargeld"). Gespeichert wird
+immer der komplette Zeilensatz auf einmal (bestehende Splits werden ersetzt) -
+das deckt Hinzufügen, Ändern und Entfernen (Zeile vor dem Speichern einfach
+per Klick auf den Trash-Button entfernen) über denselben Endpunkt ab, ganz
+ohne separate Lösch-Route. Datenmodell: `TransactionSplit`
+(`app/models/transaction_split.py`) mit `transaction_id`, `amount` (gleiches
+Vorzeichen wie die Original-Buchung) und `category_id` - die Original-Buchung
+selbst bleibt unverändert (Betrag, Kategorie "Bargeld") und bekommt nur ein
+"Aufgeteilt (N)"-Badge. Für Dashboard-Summen zählt der Split-Betrag zur
+jeweils zugewiesenen Kategorie und der Rest weiterhin zu "Bargeld" - macht
+zusammen immer exakt den Original-Betrag, keine Doppelzählung (siehe
+Dashboard-Abschnitt unten).
 
 ## Umbuchungserkennung
 
@@ -302,6 +339,30 @@ das Kategorie-Diagramm über Chart.js' eigenen `onClick`-Callback (liefert den
 Index des angeklickten Balkens). Dasselbe Muster (`hafinOpenDialog`) wird auch
 für die Kategorie-Löschbestätigung verwendet, siehe oben.
 
+Das Drilldown-Modal ist deutlich breiter als die übrigen Dialoge in der App
+(`w-[90vw] max-w-4xl` statt `.page-narrow`), da eine 5-spaltige Buchungstabelle
+sonst horizontal scrollen müsste, und enthält dieselbe Sortier-/Suchfunktion
+wie die Haupt-Buchungsliste (List.js, `hafinInitTable(...)` mit den gleichen
+sortierbaren Spaltenköpfen und Suchfeld) inkl. einer live mitlaufenden
+"Zeige X von Y"-Trefferanzeige - das Fragment wird per htmx-`innerHTML`-Swap
+in denselben Dialog-Container geladen, wird also bei jedem erneuten Öffnen
+(mit potenziell anderen Daten) komplett neu aufgebaut; `hafinInitTable()`
+prüft deshalb, ob die zuvor registrierte List.js-Instanz noch zu einem
+tatsächlich im DOM vorhandenen Container gehört, bevor es eine erneute
+Initialisierung überspringt - sonst würde die zweite Modal-Öffnung noch auf
+der Instanz der ersten (inzwischen ersetzten) hängen bleiben.
+
+Die Kategorie-Aufschlüsselung berücksichtigt Bargeld-Aufteilungen (siehe
+oben) korrekt: eine Buchung mit Splits wird intern in mehrere Eintraege
+zerlegt (Rest bei der Original-Kategorie, je ein Eintrag pro Split bei dessen
+Ziel-Kategorie - `_category_entries()`), in Summe weiterhin exakt der
+Original-Betrag. Ein Klick auf einen Balken, dessen Kategorie (auch) über
+Splits gespeist wird, zeigt im Drilldown die betroffene Original-Buchung mit
+einem "Split"-Badge und dem tatsächlichen Split-Anteil als Betrag (nicht dem
+vollen Buchungsbetrag). Die Einnahmen-/Ausgaben-/Netto-Kacheln sind davon
+komplett unberührt - sie summieren immer den echten, unveränderten
+Buchungsbetrag, unabhängig von etwaigen Splits.
+
 Bewusst nicht Teil dieser ersten Version: Vergleich zu Vorperioden, Trend über
 mehrere Zeiträume.
 
@@ -373,11 +434,30 @@ serverseitig begrenzt geladen werden. Wiederverwendbare Bausteine dafür:
 - `app/templates/_table.html`: Jinja-Makros `table_search(...)` und
   `sort_th(label, sort_key)` für Suchfeld bzw. sortierbare Spaltenüberschrift
   mit Pfeil-Icon (Styling der Pfeil-Zustände in `input.css` unter `.sort-th`)
-- `app/static/js/enhancements.js`: `hafinInitTable(containerId, valueNames)`
+- `app/static/js/enhancements.js`: `hafinInitTable(containerId, valueNames, countElementId?)`
   initialisiert eine Tabelle; nach jedem htmx-Swap werden alle registrierten
   Tabellen automatisch neu indiziert (`list.reIndex()`), damit z.B. eine per
   htmx aktualisierte Buchungszeile weiterhin korrekt sortier-/durchsuchbar
-  bleibt
+  bleibt. Der optionale dritte Parameter benennt ein Element, dessen Text bei
+  jedem `updated`-Event von List.js auf `list.matchingItems.length` gesetzt
+  wird - Basis für die live mitlaufende "Zeige X von Y"-Trefferanzeige in der
+  Buchungsliste und im Dashboard-Drilldown.
+
+**Eigene Suchlogik statt List.js' eingebauter Suche** (Version 2.3.1 hat zwei
+Bugs): List.js escaped Regex-Sonderzeichen im Suchstring, vergleicht intern
+aber trotzdem nur per einfachem `indexOf()` statt per Regex - das escapte
+`"\-"` taucht im echten Text nie auf, daher lieferte z.B. eine Suche nach
+`"-"` nie einen Treffer. Außerdem setzte List.js' eigene keyup/input-Bindung
+die Liste beim Leeren des Suchfelds nicht zuverlässig zurück (u.a. beim Klick
+auf das native `<input type="search">`-Clear-Icon). Behoben, indem das
+Such-`<input>` bewusst NICHT die von List.js selbst gehookte Klasse `.search`
+trägt (sondern `.hafin-search-input`, rein visuell identisch, aber ohne
+automatische List.js-Bindung) - `hafinInitTable()` bindet stattdessen selbst
+einen einzigen `input`-Event-Listener (deckt Tippen, Backspace-bis-leer,
+Markieren+Entf und den nativen Clear-Button gleichermaßen ab) und ruft
+`list.search(value, customSearchFn)` mit einer eigenen, simplen
+Teilstring-Suchfunktion auf, die den von List.js weiterhin vorgenommenen
+Escape-Schritt rückgängig macht, bevor sie vergleicht.
 
 Für eine neue Tabelle: `<tbody class="list" id="…">`, pro Spalte eine
 `{{ sort_th(...) }}`-Kopfzeile und eine `<td>` mit passendem Value-Name als

@@ -3,6 +3,8 @@ from typing import List, Optional
 from sqlmodel import Field, Relationship, SQLModel
 
 UMBUCHUNG_CATEGORY_NAME = "Umbuchung"
+BARGELD_CATEGORY_NAME = "Bargeld"
+PROTECTED_CATEGORY_NAMES = {UMBUCHUNG_CATEGORY_NAME, BARGELD_CATEGORY_NAME}
 
 
 class Category(SQLModel, table=True):

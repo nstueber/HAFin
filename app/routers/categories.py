@@ -5,11 +5,31 @@ from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlmodel import Session, select
 
-from app.database import get_session
-from app.models import UMBUCHUNG_CATEGORY_NAME, Category, Transaction
+from app.database import engine, get_session
+from app.models import (
+    BARGELD_CATEGORY_NAME,
+    PROTECTED_CATEGORY_NAMES,
+    UMBUCHUNG_CATEGORY_NAME,
+    Category,
+    Transaction,
+)
 from app.templating import templates
 
 router = APIRouter(prefix="/categories", tags=["categories"])
+
+
+def ensure_system_categories() -> None:
+    """Legt die festen, nicht loeschbaren Systemkategorien "Umbuchung" und
+    "Bargeld" an, falls sie noch nicht existieren - wird bei jedem App-Start
+    aufgerufen, damit beide von Anfang an in jeder Kategorie-Auswahl auftauchen
+    (nicht erst nach dem ersten Trigger-Ereignis wie einer Umbuchungs-Verknuepfung).
+    """
+    with Session(engine) as session:
+        for name in (UMBUCHUNG_CATEGORY_NAME, BARGELD_CATEGORY_NAME):
+            existing = session.exec(select(Category).where(Category.name == name)).first()
+            if existing is None:
+                session.add(Category(name=name))
+        session.commit()
 
 
 def _top_level_categories(session: Session) -> list[Category]:
@@ -30,7 +50,7 @@ def _list_context(session: Session, **extra) -> dict:
         "active_nav": "categories",
         "top_level": top_level,
         "children_by_parent": children_by_parent,
-        "umbuchung_category_name": UMBUCHUNG_CATEGORY_NAME,
+        "protected_category_names": PROTECTED_CATEGORY_NAMES,
         **extra,
     }
 
@@ -165,7 +185,7 @@ def delete_category(
     category = session.get(Category, category_id)
     if category is None:
         return HTMLResponse(content="")
-    if category.name == UMBUCHUNG_CATEGORY_NAME:
+    if category.name in PROTECTED_CATEGORY_NAMES:
         # Sollte ueber die UI nicht erreichbar sein (kein Loeschen-Button) -
         # trotzdem serverseitig verweigern, falls doch direkt angefragt.
         return Response(status_code=403)

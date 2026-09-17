@@ -24,6 +24,7 @@ app.include_router(imports.router)
 def on_startup() -> None:
     init_db()
     mapping_profiles.cleanup_stale_uploads()
+    categories.ensure_system_categories()
     transactions.backfill_umbuchung_categories()
 
 
