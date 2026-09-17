@@ -9,6 +9,14 @@
     {{ "%.2f"|format(row.txn.amount) }}
   </td>
   <td class="min-w-[12rem]">
+    {% if row.txn.counter_transaction_id %}
+    <span
+      class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-500 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-400"
+      title="Feste Kategorie für Umbuchungen - Verknüpfung erst lösen, um die Kategorie zu ändern"
+    >
+      Umbuchung
+    </span>
+    {% else %}
     <select
       name="category_id"
       data-searchable
@@ -43,6 +51,7 @@
     >
       Vorschlag: {{ row.suggested_category.name }} übernehmen
     </button>
+    {% endif %}
     {% endif %}
   </td>
   <td class="min-w-[14rem] text-xs">

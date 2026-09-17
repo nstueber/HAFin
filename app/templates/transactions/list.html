@@ -3,9 +3,11 @@
 
 {% block content %}
 {% if suggestions %}
-<div class="card">
-  <h2 class="text-base font-semibold">Umbuchungs-Vorschläge</h2>
-  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+<details class="card" open>
+  <summary class="cursor-pointer text-base font-semibold marker:text-gray-400">
+    Umbuchungs-Vorschläge ({{ suggestions_total }})
+  </summary>
+  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
     Diese Buchungspaare auf unterschiedlichen Konten haben denselben Betrag mit
     entgegengesetztem Vorzeichen innerhalb von {{ 2 }} Tagen. Nichts wird automatisch
     verknüpft - erst nach Bestätigung.
@@ -19,25 +21,36 @@
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span class="font-medium text-gray-900 dark:text-gray-100">{{ s.a_account.display_name if s.a_account else "–" }}</span>
         <span class="font-mono {{ 'text-green-600 dark:text-green-400' if s.a.amount > 0 else '' }}">{{ "%.2f"|format(s.a.amount) }}</span>
-        <span class="text-gray-400 dark:text-gray-500">({{ s.a.booking_date.isoformat() }}, {{ s.a.payee }})</span>
+        <span class="text-gray-400 dark:text-gray-500">({{ s.a.booking_date.isoformat() }}, {{ s.a.payee }}{% if s.a.purpose %}, {{ s.a.purpose }}{% endif %})</span>
         <span class="text-gray-400 dark:text-gray-500">↔</span>
         <span class="font-medium text-gray-900 dark:text-gray-100">{{ s.b_account.display_name if s.b_account else "–" }}</span>
         <span class="font-mono {{ 'text-green-600 dark:text-green-400' if s.b.amount > 0 else '' }}">{{ "%.2f"|format(s.b.amount) }}</span>
-        <span class="text-gray-400 dark:text-gray-500">({{ s.b.booking_date.isoformat() }}, {{ s.b.payee }})</span>
+        <span class="text-gray-400 dark:text-gray-500">({{ s.b.booking_date.isoformat() }}, {{ s.b.payee }}{% if s.b.purpose %}, {{ s.b.purpose }}{% endif %})</span>
       </div>
-      <button
-        type="button"
-        class="btn-outline !px-3 !py-1.5 !text-xs flex-shrink-0"
-        hx-post="/transactions/suggestions/{{ s.a.id }}/{{ s.b.id }}/confirm"
-        hx-target="#suggestion-{{ s.a.id }}-{{ s.b.id }}"
-        hx-swap="outerHTML"
-      >
-        Als Umbuchung bestätigen
-      </button>
+      <div class="flex flex-shrink-0 gap-2">
+        <button
+          type="button"
+          class="btn-outline !px-3 !py-1.5 !text-xs"
+          hx-post="/transactions/suggestions/{{ s.a.id }}/{{ s.b.id }}/confirm"
+          hx-target="#suggestion-{{ s.a.id }}-{{ s.b.id }}"
+          hx-swap="outerHTML"
+        >
+          Als Umbuchung bestätigen
+        </button>
+        <button
+          type="button"
+          class="btn-outline !px-3 !py-1.5 !text-xs !text-gray-500 dark:!text-gray-400"
+          hx-post="/transactions/suggestions/{{ s.a.id }}/{{ s.b.id }}/reject"
+          hx-target="#suggestion-{{ s.a.id }}-{{ s.b.id }}"
+          hx-swap="outerHTML"
+        >
+          Keine Umbuchung
+        </button>
+      </div>
     </div>
     {% endfor %}
   </div>
-</div>
+</details>
 {% endif %}
 
 <div class="card">

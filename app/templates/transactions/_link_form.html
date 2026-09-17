@@ -6,28 +6,17 @@
 >
   <select name="counter_transaction_id" data-searchable required class="form-input !py-1.5 !text-xs">
     <option value="" disabled selected>– Gegenbuchung wählen –</option>
-    {% if exact %}
+    {% if candidates %}
     <optgroup label="Exakt entgegengesetzter Betrag">
-      {% for c in exact %}
+      {% for c in candidates %}
       <option value="{{ c.id }}">
         {{ accounts_by_id[c.account_id].display_name if c.account_id in accounts_by_id else "–" }} ·
         {{ c.booking_date.isoformat() }} · {{ c.payee }} · {{ "%.2f"|format(c.amount) }}
       </option>
       {% endfor %}
     </optgroup>
-    {% endif %}
-    {% if others %}
-    <optgroup label="Andere Kandidaten">
-      {% for c in others %}
-      <option value="{{ c.id }}">
-        {{ accounts_by_id[c.account_id].display_name if c.account_id in accounts_by_id else "–" }} ·
-        {{ c.booking_date.isoformat() }} · {{ c.payee }} · {{ "%.2f"|format(c.amount) }}
-      </option>
-      {% endfor %}
-    </optgroup>
-    {% endif %}
-    {% if not exact and not others %}
-    <option value="" disabled>Keine anderen unverknüpften Buchungen vorhanden</option>
+    {% else %}
+    <option value="" disabled>Keine Buchung mit exakt entgegengesetztem Betrag vorhanden</option>
     {% endif %}
   </select>
   <button type="submit" class="btn-outline !px-3 !py-1.5 !text-xs">Verknüpfen</button>

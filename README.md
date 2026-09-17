@@ -142,11 +142,30 @@ Stellen angezeigt:
 - direkt in der jeweiligen Tabellenzeile (Spalte "Umbuchung") als "Treffer"
   mit Konto/Datum/Auftraggeber
 
+Betrags-Matching ist immer strikt exakt (z.B. +250.00/-250.00) - sowohl für
+automatische Vorschläge als auch für die manuelle Verknüpfung. Kandidaten mit
+abweichendem Betrag werden nirgends angezeigt, und der Server lehnt eine
+Bestätigung mit abweichenden Beträgen auch bei direktem Request ab (keine
+Verknüpfung entsteht, kein Fehler wird angezeigt - der Aufruf ist einfach
+wirkungslos).
+
 Ein Klick auf "Als Umbuchung bestätigen" verknüpft beide Seiten (setzt
-`counter_transaction_id` gegenseitig und den Typ auf `umbuchung`) und
-aktualisiert die betroffene(n) Zeile(n) per htmx-Out-of-Band-Swap, egal ob von
-der Vorschläge-Karte oder direkt aus der Tabelle bestätigt. Es wird nie
-automatisch verknüpft, nur vorgeschlagen.
+`counter_transaction_id` gegenseitig, den Typ auf `umbuchung` und die
+Kategorie auf die feste Kategorie "Umbuchung", die bei Bedarf automatisch
+angelegt wird) und aktualisiert die betroffene(n) Zeile(n) per
+htmx-Out-of-Band-Swap, egal ob von der Vorschläge-Karte oder direkt aus der
+Tabelle bestätigt. Es wird nie automatisch verknüpft, nur vorgeschlagen.
+Solange die Verknüpfung besteht, ist die Kategorie-Auswahl für beide
+Buchungen gesperrt (statt des Dropdowns erscheint ein reiner Text-Hinweis);
+erst nach Aufheben der Verknüpfung wird die Kategorie wieder leer und frei
+wählbar.
+
+Ein Vorschlag lässt sich statt bestätigt auch mit "Keine Umbuchung"
+verwerfen, ohne die Buchungen zu verknüpfen. Abgelehnte Paare werden
+dauerhaft in der Tabelle `rejectedtransferpair` gespeichert und danach nie
+wieder vorgeschlagen (weder in der Vorschläge-Karte noch als Treffer in der
+Tabellenzeile) - die manuelle Verknüpfung ("Verknüpfen mit…") bleibt davon
+unberührt, falls der Nutzer es sich anders überlegt.
 
 Eine Buchung kann auch ohne bekannte Gegenbuchung manuell als Umbuchung
 markiert werden (z.B. weil die CSV des Zielkontos noch nicht importiert
@@ -159,20 +178,23 @@ entsprechend priorisiert.
 Zusätzlich lässt sich jede unverknüpfte Buchung auch **manuell** mit einer
 bestimmten Gegenbuchung verknüpfen ("Verknüpfen mit…"): eine durchsuchbare
 Tom-Select-Auswahl (dieselbe Komponente wie bei der Kategorie-Auswahl) zeigt
-alle unverknüpften Buchungen anderer Konten, gruppiert in "Exakt
-entgegengesetzter Betrag" (nach zeitlicher Nähe sortiert) und "Andere
-Kandidaten" (ebenfalls nach zeitlicher Nähe sortiert, auf 50 begrenzt) - für
-Fälle außerhalb des automatischen ±2-Tage-Fensters oder wenn die
-Auto-Erkennung aus anderen Gründen nichts findet.
+alle unverknüpften Buchungen anderer Konten mit exakt entgegengesetztem
+Betrag, nach zeitlicher Nähe sortiert - für Fälle außerhalb des automatischen
+±2-Tage-Fensters oder wenn die Auto-Erkennung aus anderen Gründen nichts
+findet.
 
 Sowohl die manuelle Markierung als auch eine bestätigte Verknüpfung (ob
 automatisch vorgeschlagen oder manuell hergestellt) lassen sich wieder
-aufheben (Typ fällt dann auf Eingang/Ausgang anhand des Vorzeichens zurück).
+aufheben (Typ fällt dann auf Eingang/Ausgang anhand des Vorzeichens zurück,
+Kategorie wird geleert).
 
 Der Filter in der Buchungsliste hat drei Zustände (kein unabhängiger
 zweiter Button mehr, um widersprüchliche Kombinationen zu vermeiden):
 "Alle" (Standard), "Nur Umbuchungen", "Ohne Umbuchungen" - kombinierbar mit
-"nur unkategorisierte anzeigen".
+"nur unkategorisierte anzeigen". Die "Umbuchungs-Vorschläge"-Karte ist als
+aufklappbares `<details>`-Element umgesetzt (Klick auf die Überschrift
+klappt den gesamten Bereich ein/aus, kein JS nötig) und zeigt zu jeder Seite
+zusätzlich den Verwendungszweck an.
 
 ## IBAN-Anzeige
 
@@ -209,6 +231,20 @@ Der Seiteninhalt (`<main>` in `base.html`) ist auf `max-w-[1600px]` begrenzt
 statt der ursprünglichen `max-w-5xl` (1024px) - damit haben auch breite
 Tabellen wie die Buchungsliste neben der Sidebar genug Platz, ohne auf sehr
 breiten Monitoren komplett randlos zu wirken.
+
+Formular-/Einzelkarten-Seiten (Konto/Kategorie/Mapping-Profil bearbeiten,
+CSV-Import, Import-Ergebnis) nutzen einheitlich `.page-narrow`
+(`mx-auto max-w-2xl`) bzw. für inhaltsreichere Seiten wie den
+Mapping-Profil-Wizard `.page-wide` (`mx-auto max-w-4xl`), zusätzlich zur
+`.card`-Klasse - damit sind alle diese Seiten konsequent zentriert statt
+pro Seite unterschiedlich breit/linksbündig. Listen-/Tabellenseiten nutzen
+weiterhin die volle Breite von `<main>` ohne diese Klassen.
+
+Natives `<dialog>` (z.B. "Übersprungene Duplikate" beim CSV-Import) wird
+über `.showModal()` geöffnet; Tailwinds Preflight setzt `margin: 0` auf
+praktisch alle Elemente und hebt damit die native `margin: auto`-Zentrierung
+von `<dialog>` auf - dagegen steht in `input.css` eine explizite
+`dialog { margin: auto; }`-Regel.
 
 ## Sortier-/durchsuchbare Tabellen
 

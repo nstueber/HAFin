@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card max-w-2xl">
+<div class="card page-narrow">
   <h2 class="text-base font-semibold">Import-Ergebnis</h2>
   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
     Konto <span class="font-medium text-gray-700 dark:text-gray-300">{{ account.display_name }}</span>
@@ -35,7 +35,7 @@
   </dl>
 
   {% if duplicates %}
-  <dialog id="duplicates-dialog" class="card w-full max-w-2xl backdrop:bg-gray-900/50">
+  <dialog id="duplicates-dialog" class="card page-narrow w-full backdrop:bg-gray-900/50">
     <h3 class="text-base font-semibold">Übersprungene Duplikate</h3>
     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
       Diese Zeilen entsprachen bereits vorhandenen Buchungen (gleiches Datum, Betrag,
