@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block page_title %}{{ title }} – Haushaltsbuch{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="/static/js/htmx.min.js"></script>
+  <script src="/static/js/theme.js"></script>
+</head>
+<body>
+  <header class="app-bar">
+    <h1>Haushaltsbuch</h1>
+    <button id="theme-toggle" class="theme-toggle" type="button">Hell/Dunkel</button>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

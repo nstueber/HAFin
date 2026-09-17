@@ -1,0 +1,125 @@
+:root {
+  --primary-color: #03a9f4;
+  --primary-color-dark: #0288d1;
+
+  --primary-background-color: #fafafa;
+  --card-background-color: #ffffff;
+  --primary-text-color: #212121;
+  --secondary-text-color: #727272;
+  --divider-color: #e0e0e0;
+
+  --income-color: #43a047;
+  --expense-color: #e53935;
+  --transfer-color: #757575;
+
+  --card-radius: 12px;
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --primary-background-color: #111111;
+    --card-background-color: #1c1c1c;
+    --primary-text-color: #e1e1e1;
+    --secondary-text-color: #9b9b9b;
+    --divider-color: #333333;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --primary-background-color: #111111;
+  --card-background-color: #1c1c1c;
+  --primary-text-color: #e1e1e1;
+  --secondary-text-color: #9b9b9b;
+  --divider-color: #333333;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Roboto", "Noto Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+  background-color: var(--primary-background-color);
+  color: var(--primary-text-color);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+header.app-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--primary-color);
+  color: #ffffff;
+  padding: 0 16px;
+  height: 56px;
+  box-shadow: var(--card-shadow);
+}
+
+header.app-bar h1 {
+  font-size: 1.15rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.theme-toggle {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.card {
+  background-color: var(--card-background-color);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--secondary-text-color);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.muted {
+  color: var(--secondary-text-color);
+}
+
+.amount-positive {
+  color: var(--income-color);
+}
+
+.amount-negative {
+  color: var(--expense-color);
+}
+
+.amount-transfer {
+  color: var(--transfer-color);
+}
+
+a {
+  color: var(--primary-color);
+}
