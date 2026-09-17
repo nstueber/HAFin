@@ -1,78 +1,78 @@
 {% extends "base.html" %}
+{% from "_icons.html" import pencil, trash %}
 
 {% block content %}
-<article>
-  <h5>Konten</h5>
+<div class="card">
+  <h2 class="text-base font-semibold">Konten</h2>
   {% if accounts %}
-  <table class="border">
-    <thead>
-      <tr>
-        <th>Anzeigename</th>
-        <th>IBAN</th>
-        <th>Bank</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="account-rows">
-      {% for account in accounts %}
-      <tr id="account-row-{{ account.id }}">
-        <td>{{ account.display_name }}</td>
-        <td>{{ account.iban }}</td>
-        <td>{{ account.bank_name or "–" }}</td>
-        <td class="right-align">
-          <a href="/accounts/{{ account.id }}/edit" class="circle transparent">
-            <i>edit</i>
-          </a>
-          <button
-            type="button"
-            class="circle transparent"
-            hx-post="/accounts/{{ account.id }}/delete"
-            hx-target="#account-row-{{ account.id }}"
-            hx-swap="outerHTML"
-            hx-confirm="Konto &quot;{{ account.display_name }}&quot; wirklich löschen?"
-          >
-            <i>delete</i>
-          </button>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="mt-4 overflow-x-auto">
+    <table class="table-base">
+      <thead>
+        <tr>
+          <th>Anzeigename</th>
+          <th>IBAN</th>
+          <th>Bank</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="account-rows">
+        {% for account in accounts %}
+        <tr id="account-row-{{ account.id }}">
+          <td class="font-medium text-gray-900 dark:text-gray-100">{{ account.display_name }}</td>
+          <td class="font-mono text-xs">{{ account.iban }}</td>
+          <td>{{ account.bank_name or "–" }}</td>
+          <td class="text-right">
+            <div class="flex justify-end gap-1">
+              <a href="/accounts/{{ account.id }}/edit" class="btn-ghost-icon" aria-label="Bearbeiten">
+                {{ pencil() }}
+              </a>
+              <button
+                type="button"
+                class="btn-ghost-icon"
+                hx-post="/accounts/{{ account.id }}/delete"
+                hx-target="#account-row-{{ account.id }}"
+                hx-swap="outerHTML"
+                hx-confirm="Konto &quot;{{ account.display_name }}&quot; wirklich löschen?"
+                aria-label="Löschen"
+              >
+                {{ trash() }}
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
-  <p>Noch keine Konten angelegt.</p>
+  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Noch keine Konten angelegt.</p>
   {% endif %}
-</article>
+</div>
 
-<article>
-  <h5>Neues Konto anlegen</h5>
+<div class="card">
+  <h2 class="text-base font-semibold">Neues Konto anlegen</h2>
   {% if form_error %}
-  <div class="error round padding">{{ form_error }}</div>
+  <div class="alert-error mt-4">{{ form_error }}</div>
   {% endif %}
-  <form method="post" action="/accounts">
-    <div class="grid">
-      <div class="s12 m4">
-        <div class="field label border">
-          <input type="text" name="display_name" required placeholder=" "
-                 value="{{ form_data.display_name if form_data else '' }}" />
-          <label>Anzeigename</label>
-        </div>
+  <form method="post" action="/accounts" class="mt-4">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div>
+        <label class="form-label">Anzeigename</label>
+        <input type="text" name="display_name" required class="form-input"
+               value="{{ form_data.display_name if form_data else '' }}" />
       </div>
-      <div class="s12 m4">
-        <div class="field label border">
-          <input type="text" name="iban" required placeholder=" "
-                 value="{{ form_data.iban if form_data else '' }}" />
-          <label>IBAN</label>
-        </div>
+      <div>
+        <label class="form-label">IBAN</label>
+        <input type="text" name="iban" required class="form-input"
+               value="{{ form_data.iban if form_data else '' }}" />
       </div>
-      <div class="s12 m4">
-        <div class="field label border">
-          <input type="text" name="bank_name" placeholder=" "
-                 value="{{ form_data.bank_name if form_data else '' }}" />
-          <label>Bank (optional)</label>
-        </div>
+      <div>
+        <label class="form-label">Bank (optional)</label>
+        <input type="text" name="bank_name" class="form-input"
+               value="{{ form_data.bank_name if form_data else '' }}" />
       </div>
     </div>
-    <button type="submit">Konto anlegen</button>
+    <button type="submit" class="btn-primary mt-5">Konto anlegen</button>
   </form>
-</article>
+</div>
 {% endblock %}

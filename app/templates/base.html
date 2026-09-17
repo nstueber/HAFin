@@ -1,76 +1,93 @@
-{% macro nav_link(href, icon, label, key) -%}
-<a href="{{ href }}" class="{{ 'active' if active_nav == key else '' }}">
-  <i>{{ icon }}</i>
-  <div>{{ label }}</div>
+{% from "_icons.html" import sun, moon, dashboard, bank, table_cells %}
+
+{% macro nav_item(href, icon_html, label, key, active_nav, layout) %}
+{% set is_active = active_nav == key %}
+{% if layout == 'sidebar' %}
+<a href="{{ href }}" class="nav-link {{ 'nav-link-active' if is_active else '' }}">
+  {{ icon_html }}
+  <span>{{ label }}</span>
 </a>
-{%- endmacro %}
+{% elif layout == 'rail' %}
+<a href="{{ href }}" class="flex flex-col items-center gap-1 rounded-lg px-2 py-2.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100 {{ 'bg-accent/10 text-accent hover:bg-accent/10 hover:text-accent dark:bg-accent/15 dark:text-accent dark:hover:text-accent' if is_active else '' }}">
+  {{ icon_html }}
+  <span>{{ label }}</span>
+</a>
+{% else %}
+<a href="{{ href }}" class="flex flex-1 flex-col items-center gap-1 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 {{ 'text-accent dark:text-accent' if is_active else '' }}">
+  {{ icon_html }}
+  <span>{{ label }}</span>
+</a>
+{% endif %}
+{% endmacro %}
+
 <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block page_title %}{{ title }} – Haushaltsbuch{% endblock %}</title>
-
-  <link href="https://cdn.jsdelivr.net/npm/beercss@5.0.3/dist/cdn/beer.min.css" rel="stylesheet" />
-  <script type="module" src="https://cdn.jsdelivr.net/npm/beercss@5.0.3/dist/cdn/beer.min.js"></script>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/material-dynamic-colors@1.1.4/dist/cdn/material-dynamic-colors.min.js"></script>
-  <script type="module">
-    ui("theme", "#03a9f4");
-  </script>
-
-  <script src="/static/js/htmx.min.js"></script>
-  <script src="/static/js/theme.js"></script>
-</head>
-<body>
   <script>
     (function () {
       try {
         var stored = localStorage.getItem("haushaltsbuch-theme");
-        if (stored === "light" || stored === "dark") {
-          document.body.classList.add(stored);
-        }
+        var isDark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.classList.toggle("dark", isDark);
       } catch (e) {
-        // localStorage evtl. nicht verfügbar - Systempräferenz greift.
+        // localStorage evtl. nicht verfügbar - Systempräferenz greift trotzdem via CSS.
       }
     })();
   </script>
+  <title>{% block page_title %}{{ title }} – Haushaltsbuch{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <script src="/static/js/htmx.min.js"></script>
+  <script src="/static/js/theme.js"></script>
+</head>
+<body class="h-full font-sans antialiased">
+  <div class="flex min-h-screen">
+    <!-- Desktop: volle Sidebar mit Icon + Label, dauerhaft sichtbar -->
+    <aside class="hidden lg:flex lg:w-64 lg:flex-shrink-0 lg:flex-col lg:border-r lg:border-gray-200 lg:bg-white dark:lg:border-gray-800 dark:lg:bg-gray-900">
+      <div class="flex h-16 items-center px-6">
+        <span class="text-base font-semibold tracking-tight">Haushaltsbuch</span>
+      </div>
+      <nav class="flex flex-1 flex-col gap-1 px-3 py-2">
+        {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'sidebar') }}
+        {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'sidebar') }}
+        {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'sidebar') }}
+      </nav>
+    </aside>
 
-  <!-- Desktop: volle Sidebar mit Icon + Label, dauerhaft sichtbar -->
-  <nav class="left max l">
-    <header>
-      <h6>Haushaltsbuch</h6>
-    </header>
-    {{ nav_link('/', 'dashboard', 'Übersicht', 'overview') }}
-    {{ nav_link('/accounts', 'account_balance', 'Konten', 'accounts') }}
-    {{ nav_link('/mapping-profiles', 'rule', 'Mapping-Profile', 'mapping_profiles') }}
-  </nav>
+    <!-- Tablet: schmale Icon-Rail -->
+    <aside class="hidden md:flex md:w-20 md:flex-shrink-0 md:flex-col md:items-center md:border-r md:border-gray-200 md:bg-white lg:hidden dark:md:border-gray-800 dark:md:bg-gray-900">
+      <div class="flex h-16 items-center"></div>
+      <nav class="flex flex-1 flex-col gap-1 px-2 py-2">
+        {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'rail') }}
+        {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'rail') }}
+        {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'rail') }}
+      </nav>
+    </aside>
 
-  <!-- Tablet: schmale Sidebar, nur Icons + kleine Beschriftung -->
-  <nav class="left m">
-    {{ nav_link('/', 'dashboard', 'Übersicht', 'overview') }}
-    {{ nav_link('/accounts', 'account_balance', 'Konten', 'accounts') }}
-    {{ nav_link('/mapping-profiles', 'rule', 'Mapping-Profile', 'mapping_profiles') }}
-  </nav>
+    <!-- Hauptspalte: Titelleiste + Seiteninhalt -->
+    <div class="flex min-h-screen flex-1 flex-col">
+      <header class="sticky top-0 z-30 flex h-16 flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white/80 px-4 backdrop-blur-sm sm:px-6 lg:px-8 dark:border-gray-800 dark:bg-gray-950/80">
+        <h1 class="text-lg font-semibold tracking-tight">{{ title }}</h1>
+        <button id="theme-toggle" type="button" class="btn-ghost-icon" aria-label="Hell/Dunkel umschalten">
+          {{ sun("h-5 w-5 dark:hidden") }}
+          {{ moon("h-5 w-5 hidden dark:block") }}
+        </button>
+      </header>
+
+      <main class="flex-1 pb-20 md:pb-8">
+        <div class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+          {% block content %}{% endblock %}
+        </div>
+      </main>
+    </div>
+  </div>
 
   <!-- Mobile: Bottom-Navigation -->
-  <nav class="bottom s">
-    {{ nav_link('/', 'dashboard', 'Übersicht', 'overview') }}
-    {{ nav_link('/accounts', 'account_balance', 'Konten', 'accounts') }}
-    {{ nav_link('/mapping-profiles', 'rule', 'Mapping-Profile', 'mapping_profiles') }}
+  <nav class="fixed inset-x-0 bottom-0 z-40 flex border-t border-gray-200 bg-white md:hidden dark:border-gray-800 dark:bg-gray-900">
+    {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'bottom') }}
+    {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'bottom') }}
+    {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'bottom') }}
   </nav>
-
-  <!-- Schmale Titelleiste: aktueller Seitentitel + Light/Dark-Umschalter -->
-  <header class="fixed">
-    <nav>
-      <h6 class="max">{{ title }}</h6>
-      <button id="theme-toggle" type="button" class="circle transparent">
-        <i>dark_mode</i>
-      </button>
-    </nav>
-  </header>
-
-  <main class="responsive">
-    {% block content %}{% endblock %}
-  </main>
 </body>
 </html>

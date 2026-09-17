@@ -1,11 +1,14 @@
+{% from "_icons.html" import pencil %}
 <tr id="account-row-{{ account.id }}">
-  <td>{{ account.display_name }}</td>
-  <td>{{ account.iban }}</td>
+  <td class="font-medium text-gray-900 dark:text-gray-100">{{ account.display_name }}</td>
+  <td class="font-mono text-xs">{{ account.iban }}</td>
   <td>{{ account.bank_name or "–" }}</td>
-  <td class="right-align">
-    <a href="/accounts/{{ account.id }}/edit" class="circle transparent">
-      <i>edit</i>
-    </a>
-    <span>{{ error }}</span>
+  <td class="text-right">
+    <div class="flex items-center justify-end gap-2">
+      <span class="text-xs text-red-600 dark:text-red-400">{{ error }}</span>
+      <a href="/accounts/{{ account.id }}/edit" class="btn-ghost-icon" aria-label="Bearbeiten">
+        {{ pencil() }}
+      </a>
+    </div>
   </td>
 </tr>

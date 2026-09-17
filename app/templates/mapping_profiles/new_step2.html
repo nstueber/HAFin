@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
 {% block content %}
-<article>
-  <h5>Neues Mapping-Profil: Einstellungen prüfen</h5>
-  <p>
+<div class="card">
+  <h2 class="text-base font-semibold">Neues Mapping-Profil: Einstellungen prüfen</h2>
+  <p class="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
     Automatisch erkannte Einstellungen unten prüfen und bei Bedarf anpassen.
     Die Vorschau aktualisiert sich automatisch, sobald du etwas änderst.
   </p>
   {% if form_error %}
-  <div class="error round padding">{{ form_error }}</div>
+  <div class="alert-error mt-4">{{ form_error }}</div>
   {% endif %}
   <form
     id="profile-form"
@@ -18,22 +18,23 @@
     hx-trigger="change"
     hx-target="#step2-dynamic"
     hx-swap="innerHTML"
+    class="mt-5"
   >
     <input type="hidden" name="upload_id" value="{{ upload_id }}" />
 
-    <div class="field label border">
-      <input type="text" name="name" required placeholder=" " value="{{ name }}" />
-      <label>Profilname</label>
+    <div class="max-w-sm">
+      <label class="form-label">Profilname</label>
+      <input type="text" name="name" required class="form-input" value="{{ name }}" />
     </div>
 
-    <div id="step2-dynamic">
+    <div id="step2-dynamic" class="mt-6">
       {% include "mapping_profiles/_step2_dynamic.html" %}
     </div>
 
-    <nav>
-      <button type="submit">Profil speichern</button>
-      <a href="/mapping-profiles">Abbrechen</a>
-    </nav>
+    <div class="mt-6 flex items-center gap-3 border-t border-gray-200 pt-5 dark:border-gray-800">
+      <button type="submit" class="btn-primary">Profil speichern</button>
+      <a href="/mapping-profiles" class="btn-outline">Abbrechen</a>
+    </div>
   </form>
-</article>
+</div>
 {% endblock %}

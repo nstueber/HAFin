@@ -1,36 +1,30 @@
 {% extends "base.html" %}
 
 {% block content %}
-<article>
-  <h5>Konto bearbeiten</h5>
+<div class="card">
+  <h2 class="text-base font-semibold">Konto bearbeiten</h2>
   {% if form_error %}
-  <div class="error round padding">{{ form_error }}</div>
+  <div class="alert-error mt-4">{{ form_error }}</div>
   {% endif %}
-  <form method="post" action="/accounts/{{ account.id }}/edit">
-    <div class="grid">
-      <div class="s12 m4">
-        <div class="field label border">
-          <input type="text" name="display_name" required placeholder=" " value="{{ account.display_name }}" />
-          <label>Anzeigename</label>
-        </div>
+  <form method="post" action="/accounts/{{ account.id }}/edit" class="mt-4">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div>
+        <label class="form-label">Anzeigename</label>
+        <input type="text" name="display_name" required class="form-input" value="{{ account.display_name }}" />
       </div>
-      <div class="s12 m4">
-        <div class="field label border">
-          <input type="text" name="iban" required placeholder=" " value="{{ account.iban }}" />
-          <label>IBAN</label>
-        </div>
+      <div>
+        <label class="form-label">IBAN</label>
+        <input type="text" name="iban" required class="form-input" value="{{ account.iban }}" />
       </div>
-      <div class="s12 m4">
-        <div class="field label border">
-          <input type="text" name="bank_name" placeholder=" " value="{{ account.bank_name or '' }}" />
-          <label>Bank (optional)</label>
-        </div>
+      <div>
+        <label class="form-label">Bank (optional)</label>
+        <input type="text" name="bank_name" class="form-input" value="{{ account.bank_name or '' }}" />
       </div>
     </div>
-    <nav>
-      <button type="submit">Speichern</button>
-      <a href="/accounts">Abbrechen</a>
-    </nav>
+    <div class="mt-5 flex items-center gap-3">
+      <button type="submit" class="btn-primary">Speichern</button>
+      <a href="/accounts" class="btn-outline">Abbrechen</a>
+    </div>
   </form>
-</article>
+</div>
 {% endblock %}

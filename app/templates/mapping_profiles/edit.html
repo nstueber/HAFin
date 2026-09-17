@@ -1,15 +1,17 @@
 {% extends "base.html" %}
 
 {% block content %}
-<article>
-  <h5>Mapping-Profil bearbeiten</h5>
+<div class="card">
+  <h2 class="text-base font-semibold">Mapping-Profil bearbeiten</h2>
   {% if form_error %}
-  <div class="error round padding">{{ form_error }}</div>
+  <div class="alert-error mt-4">{{ form_error }}</div>
   {% endif %}
-  {% set values = profile %}
-  {% set action_url = "/mapping-profiles/" ~ profile.id ~ "/edit" %}
-  {% set submit_label = "Speichern" %}
-  {% set cancel_url = "/mapping-profiles" %}
-  {% include "mapping_profiles/_fields.html" %}
-</article>
+  <div class="mt-4">
+    {% set values = profile %}
+    {% set action_url = "/mapping-profiles/" ~ profile.id ~ "/edit" %}
+    {% set submit_label = "Speichern" %}
+    {% set cancel_url = "/mapping-profiles" %}
+    {% include "mapping_profiles/_fields.html" %}
+  </div>
+</div>
 {% endblock %}

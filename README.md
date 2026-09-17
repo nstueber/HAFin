@@ -2,10 +2,10 @@
 
 Haushaltsbuch-App zur Überwachung von Ausgaben und Einnahmen über mehrere
 Bankkonten hinweg. Backend: FastAPI + SQLModel (SQLite), Frontend:
-Jinja2-Templates + htmx, UI-Framework [Beer CSS](https://www.beercss.com/)
-(Material-Design-3-Komponenten, per CDN eingebunden) mit HA-Blau (#03a9f4)
-als Primärfarbe. Läuft perspektivisch als Home-Assistant-Add-on, während der
-Entwicklung eigenständig per Docker.
+Jinja2-Templates + htmx, Styling mit [Tailwind CSS v4](https://tailwindcss.com/)
+(Standalone-CLI, kein Node.js/npm nötig) im cleanen, shadcn/Next.js-artigen
+Look mit HA-Blau (#03a9f4) als Akzentfarbe. Läuft perspektivisch als
+Home-Assistant-Add-on, während der Entwicklung eigenständig per Docker.
 
 ## Lokal starten (venv)
 
@@ -18,6 +18,24 @@ DATABASE_PATH=./data/haushaltsbuch.db uvicorn app.main:app --reload --port 8000
 
 App: http://localhost:8000
 Health-Check: http://localhost:8000/health
+
+### Tailwind CSS lokal bauen
+
+`app/static/css/app.css` wird aus `app/static/css/input.css` generiert und ist
+nicht eingecheckt (siehe `.gitignore`) - vor dem ersten lokalen Start (oder
+parallel zum Dev-Server im Watch-Modus) einmalig die Tailwind-Standalone-CLI
+herunterladen und laufen lassen:
+
+```bash
+# einmalig herunterladen (Linux x64; für andere Plattformen siehe
+# https://github.com/tailwindlabs/tailwindcss/releases/latest)
+curl -sSL -o tailwindcss \
+  https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/tailwindcss-linux-x64
+chmod +x tailwindcss
+
+# parallel zu uvicorn --reload laufen lassen, baut bei Template-Änderungen automatisch neu
+./tailwindcss -i app/static/css/input.css -o app/static/css/app.css --watch
+```
 
 ## Mit Docker starten
 
@@ -34,8 +52,8 @@ App: http://localhost:8000
 app/
   models/       SQLModel-Datenmodelle (Konten, Kategorien, Mapping-Profile, Transaktionen)
   services/     CSV-Erkennungslogik (Encoding, Trennzeichen, Dezimaltrennzeichen, Datumsformat)
-  templates/    Jinja2-Templates
-  static/       JS (htmx, Theme-Toggle); Styling kommt von Beer CSS per CDN
+  templates/    Jinja2-Templates (inkl. _icons.html mit Heroicons-SVG-Makros)
+  static/       JS (htmx, Theme-Toggle), CSS (input.css = Quelle, app.css = generiert)
   database.py   DB-Engine & Session
   main.py       FastAPI-App, Health-Check, Startseite
 ```
@@ -57,8 +75,24 @@ Speichern des Profils unter `<DATA_DIR>/tmp_mapping_uploads/` und wird danach
 gelöscht (verwaiste Uploads werden zusätzlich beim App-Start nach 6 Stunden
 automatisch aufgeräumt).
 
-## Hinweis: Internetzugriff im Browser
+## Styling: Tailwind CSS (Standalone-CLI, ohne Node.js)
 
-Beer CSS wird per CDN (jsDelivr) eingebunden, htmx dagegen lokal ausgeliefert.
-Für die Darstellung braucht der Browser, der die App aufruft, also
-Internetzugriff auf `cdn.jsdelivr.net`.
+Kein npm/Node.js-Laufzeitabhängigkeit: Das `Dockerfile` lädt in einer
+Build-Stage (`css-builder`) die passende
+[Tailwind-Standalone-CLI](https://tailwindcss.com/blog/standalone-cli)
+(Alpine/musl-Binary) herunter, kompiliert `app/static/css/input.css` gegen
+alle Jinja2-Templates zu einer minifizierten, gepurgten `app.css` und kopiert
+nur diese fertige Datei ins finale Image - die Build-Stage selbst (inkl.
+CLI-Binary) landet nicht im Endergebnis. Konfiguration (Akzentfarbe,
+Dark-Mode-Variante, wiederverwendbare Komponentenklassen wie `.btn-primary`,
+`.card`, `.form-input`) steht direkt in `input.css` (Tailwind-v4-CSS-Config,
+kein `tailwind.config.js` nötig). Icons sind inline SVGs aus
+[Heroicons](https://github.com/tailwindlabs/heroicons) (MIT-lizenziert,
+lokal in `app/templates/_icons.html` als Jinja-Makros eingebettet, kein
+CDN/Font-Icon-Download zur Laufzeit nötig).
+
+Alle statischen Assets (htmx, Tailwind-Ausgabe, Icons) werden lokal
+ausgeliefert - für die reine Anzeige der App braucht der Browser keinen
+Internetzugriff. Internetzugriff wird nur beim `docker build` selbst benötigt
+(Tailwind-CLI-Download) sowie beim lokalen `./tailwindcss`-Download für die
+Entwicklung.
