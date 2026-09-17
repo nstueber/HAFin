@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <h2>Konto bearbeiten</h2>
+  {% if form_error %}
+  <p class="form-error">{{ form_error }}</p>
+  {% endif %}
+  <form method="post" action="/accounts/{{ account.id }}/edit" class="stacked-form">
+    <label>
+      Anzeigename
+      <input type="text" name="display_name" required value="{{ account.display_name }}" />
+    </label>
+    <label>
+      IBAN
+      <input type="text" name="iban" required value="{{ account.iban }}" />
+    </label>
+    <label>
+      Bank (optional)
+      <input type="text" name="bank_name" value="{{ account.bank_name or '' }}" />
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="primary-button">Speichern</button>
+      <a href="/accounts" class="secondary-link">Abbrechen</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

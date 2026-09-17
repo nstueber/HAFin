@@ -1,0 +1,60 @@
+{% set values = values or {} %}
+<form method="post" action="{{ action_url }}" class="stacked-form stacked-form--wide">
+  <label>
+    Name
+    <input type="text" name="name" required value="{{ values.name or '' }}" />
+  </label>
+
+  <div class="form-grid">
+    <label>
+      Trennzeichen
+      <select name="delimiter">
+        <option value="," {% if values.delimiter == ',' or not values.delimiter %}selected{% endif %}>Komma (,)</option>
+        <option value=";" {% if values.delimiter == ';' %}selected{% endif %}>Semikolon (;)</option>
+      </select>
+    </label>
+    <label>
+      Dezimaltrennzeichen
+      <select name="decimal_separator">
+        <option value="." {% if values.decimal_separator == '.' or not values.decimal_separator %}selected{% endif %}>Punkt (.)</option>
+        <option value="," {% if values.decimal_separator == ',' %}selected{% endif %}>Komma (,)</option>
+      </select>
+    </label>
+    <label>
+      Zeichenkodierung
+      <select name="encoding">
+        <option value="utf-8" {% if values.encoding == 'utf-8' or not values.encoding %}selected{% endif %}>UTF-8</option>
+        <option value="iso-8859-1" {% if values.encoding == 'iso-8859-1' %}selected{% endif %}>ISO-8859-1</option>
+      </select>
+    </label>
+    <label>
+      Datumsformat
+      <input type="text" name="date_format" required value="{{ values.date_format or '%Y-%m-%d' }}" placeholder="z.B. %d.%m.%Y" />
+    </label>
+  </div>
+
+  <p class="muted">CSV-Spaltennamen (aus der Kopfzeile der CSV-Datei):</p>
+  <div class="form-grid">
+    <label>
+      Buchungsdatum
+      <input type="text" name="date_column" required value="{{ values.date_column or '' }}" />
+    </label>
+    <label>
+      Auftraggeber/Empfänger
+      <input type="text" name="payee_column" required value="{{ values.payee_column or '' }}" />
+    </label>
+    <label>
+      Verwendungszweck
+      <input type="text" name="purpose_column" required value="{{ values.purpose_column or '' }}" />
+    </label>
+    <label>
+      Betrag
+      <input type="text" name="amount_column" required value="{{ values.amount_column or '' }}" />
+    </label>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="primary-button">{{ submit_label }}</button>
+    {% if cancel_url %}<a href="{{ cancel_url }}" class="secondary-link">Abbrechen</a>{% endif %}
+  </div>
+</form>

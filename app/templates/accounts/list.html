@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <h2>Konten</h2>
+  {% if accounts %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Anzeigename</th>
+        <th>IBAN</th>
+        <th>Bank</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="account-rows">
+      {% for account in accounts %}
+      <tr id="account-row-{{ account.id }}">
+        <td>{{ account.display_name }}</td>
+        <td>{{ account.iban }}</td>
+        <td class="muted">{{ account.bank_name or "–" }}</td>
+        <td class="row-actions">
+          <a href="/accounts/{{ account.id }}/edit">Bearbeiten</a>
+          <button
+            type="button"
+            class="link-button"
+            hx-post="/accounts/{{ account.id }}/delete"
+            hx-target="#account-row-{{ account.id }}"
+            hx-swap="outerHTML"
+            hx-confirm="Konto &quot;{{ account.display_name }}&quot; wirklich löschen?"
+          >Löschen</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Noch keine Konten angelegt.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Neues Konto anlegen</h2>
+  {% if form_error %}
+  <p class="form-error">{{ form_error }}</p>
+  {% endif %}
+  <form method="post" action="/accounts" class="stacked-form">
+    <label>
+      Anzeigename
+      <input type="text" name="display_name" required value="{{ form_data.display_name if form_data else '' }}" />
+    </label>
+    <label>
+      IBAN
+      <input type="text" name="iban" required value="{{ form_data.iban if form_data else '' }}" />
+    </label>
+    <label>
+      Bank (optional)
+      <input type="text" name="bank_name" value="{{ form_data.bank_name if form_data else '' }}" />
+    </label>
+    <button type="submit" class="primary-button">Konto anlegen</button>
+  </form>
+</div>
+{% endblock %}

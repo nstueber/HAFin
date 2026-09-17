@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <h2>Mapping-Profile</h2>
+  <p class="muted">
+    Ein Mapping-Profil legt fest, wie eine Bank-CSV gelesen wird (Trennzeichen,
+    Dezimaltrennzeichen, Zeichenkodierung, Datumsformat) und welche Spalten
+    welchen Feldern entsprechen. Profile sind wiederverwendbar, z.B. eines pro Bank.
+  </p>
+  {% if profiles %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Trennzeichen</th>
+        <th>Dezimal</th>
+        <th>Encoding</th>
+        <th>Datumsformat</th>
+        <th>Spalten (Datum / Name / Zweck / Betrag)</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="profile-rows">
+      {% for profile in profiles %}
+      <tr id="profile-row-{{ profile.id }}">
+        <td>{{ profile.name }}</td>
+        <td><code>{{ profile.delimiter }}</code></td>
+        <td><code>{{ profile.decimal_separator }}</code></td>
+        <td>{{ profile.encoding }}</td>
+        <td><code>{{ profile.date_format }}</code></td>
+        <td class="muted">
+          {{ profile.date_column }} / {{ profile.payee_column }} /
+          {{ profile.purpose_column }} / {{ profile.amount_column }}
+        </td>
+        <td class="row-actions">
+          <a href="/mapping-profiles/{{ profile.id }}/edit">Bearbeiten</a>
+          <button
+            type="button"
+            class="link-button"
+            hx-post="/mapping-profiles/{{ profile.id }}/delete"
+            hx-target="#profile-row-{{ profile.id }}"
+            hx-swap="outerHTML"
+            hx-confirm="Mapping-Profil &quot;{{ profile.name }}&quot; wirklich löschen?"
+          >Löschen</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Noch keine Mapping-Profile angelegt.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Neues Mapping-Profil anlegen</h2>
+  {% if form_error %}
+  <p class="form-error">{{ form_error }}</p>
+  {% endif %}
+  {% set values = form_data %}
+  {% set action_url = "/mapping-profiles" %}
+  {% set submit_label = "Profil anlegen" %}
+  {% set cancel_url = None %}
+  {% include "mapping_profiles/_fields.html" %}
+</div>
+{% endblock %}

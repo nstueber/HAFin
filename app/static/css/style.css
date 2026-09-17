@@ -81,6 +81,27 @@ header.app-bar h1 {
   background: rgba(255, 255, 255, 0.15);
 }
 
+nav.app-nav {
+  display: flex;
+  gap: 4px;
+  background-color: var(--card-background-color);
+  border-bottom: 1px solid var(--divider-color);
+  padding: 0 16px;
+}
+
+nav.app-nav a {
+  display: inline-block;
+  padding: 12px 12px;
+  color: var(--primary-text-color);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  font-size: 0.9rem;
+}
+
+nav.app-nav a:hover {
+  border-bottom-color: var(--primary-color);
+}
+
 main {
   max-width: 960px;
   margin: 0 auto;
@@ -122,4 +143,123 @@ main {
 
 a {
   color: var(--primary-color);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: 8px 8px;
+  border-bottom: 1px solid var(--divider-color);
+  font-size: 0.9rem;
+}
+
+.data-table th {
+  color: var(--secondary-text-color);
+  font-weight: 500;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.row-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.row-actions a,
+.link-button {
+  margin-left: 12px;
+  font-size: 0.85rem;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--primary-color);
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+code {
+  background-color: var(--primary-background-color);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.85em;
+}
+
+.stacked-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 480px;
+}
+
+.stacked-form--wide {
+  max-width: 700px;
+}
+
+.stacked-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--secondary-text-color);
+}
+
+.stacked-form input,
+.stacked-form select {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 8px 10px;
+  border: 1px solid var(--divider-color);
+  border-radius: 6px;
+  background-color: var(--primary-background-color);
+  color: var(--primary-text-color);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.primary-button {
+  align-self: flex-start;
+  background-color: var(--primary-color);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 9px 18px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.primary-button:hover {
+  background-color: var(--primary-color-dark);
+}
+
+.secondary-link {
+  font-size: 0.9rem;
+}
+
+.form-error {
+  color: var(--expense-color);
+  font-size: 0.85rem;
 }
