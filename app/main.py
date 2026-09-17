@@ -34,5 +34,5 @@ def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"title": "Übersicht"},
+        context={"title": "Übersicht", "active_nav": "overview"},
     )

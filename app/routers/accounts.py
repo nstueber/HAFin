@@ -23,7 +23,7 @@ def list_accounts(request: Request, session: Session = Depends(get_session)) -> 
     return templates.TemplateResponse(
         request=request,
         name="accounts/list.html",
-        context={"title": "Konten", "accounts": accounts},
+        context={"title": "Konten", "active_nav": "accounts", "accounts": accounts},
     )
 
 
@@ -51,6 +51,7 @@ def create_account(
             name="accounts/list.html",
             context={
                 "title": "Konten",
+                "active_nav": "accounts",
                 "accounts": accounts,
                 "form_error": f"Ein Konto mit IBAN {_normalize_iban(iban)} existiert bereits.",
                 "form_data": {"iban": iban, "display_name": display_name, "bank_name": bank_name},
@@ -68,7 +69,7 @@ def edit_account_form(
     return templates.TemplateResponse(
         request=request,
         name="accounts/edit.html",
-        context={"title": "Konto bearbeiten", "account": account},
+        context={"title": "Konto bearbeiten", "active_nav": "accounts", "account": account},
     )
 
 
@@ -95,6 +96,7 @@ def update_account(
             name="accounts/edit.html",
             context={
                 "title": "Konto bearbeiten",
+                "active_nav": "accounts",
                 "account": account,
                 "form_error": f"Ein Konto mit IBAN {_normalize_iban(iban)} existiert bereits.",
             },

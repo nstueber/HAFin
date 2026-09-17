@@ -1,28 +1,36 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-  <h2>Konto bearbeiten</h2>
+<article>
+  <h5>Konto bearbeiten</h5>
   {% if form_error %}
-  <p class="form-error">{{ form_error }}</p>
+  <div class="error round padding">{{ form_error }}</div>
   {% endif %}
-  <form method="post" action="/accounts/{{ account.id }}/edit" class="stacked-form">
-    <label>
-      Anzeigename
-      <input type="text" name="display_name" required value="{{ account.display_name }}" />
-    </label>
-    <label>
-      IBAN
-      <input type="text" name="iban" required value="{{ account.iban }}" />
-    </label>
-    <label>
-      Bank (optional)
-      <input type="text" name="bank_name" value="{{ account.bank_name or '' }}" />
-    </label>
-    <div class="form-actions">
-      <button type="submit" class="primary-button">Speichern</button>
-      <a href="/accounts" class="secondary-link">Abbrechen</a>
+  <form method="post" action="/accounts/{{ account.id }}/edit">
+    <div class="grid">
+      <div class="s12 m4">
+        <div class="field label border">
+          <input type="text" name="display_name" required placeholder=" " value="{{ account.display_name }}" />
+          <label>Anzeigename</label>
+        </div>
+      </div>
+      <div class="s12 m4">
+        <div class="field label border">
+          <input type="text" name="iban" required placeholder=" " value="{{ account.iban }}" />
+          <label>IBAN</label>
+        </div>
+      </div>
+      <div class="s12 m4">
+        <div class="field label border">
+          <input type="text" name="bank_name" placeholder=" " value="{{ account.bank_name or '' }}" />
+          <label>Bank (optional)</label>
+        </div>
+      </div>
     </div>
+    <nav>
+      <button type="submit">Speichern</button>
+      <a href="/accounts">Abbrechen</a>
+    </nav>
   </form>
-</div>
+</article>
 {% endblock %}

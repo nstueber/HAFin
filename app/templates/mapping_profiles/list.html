@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-  <h2>Mapping-Profile</h2>
-  <p class="muted">
+<article>
+  <h5>Mapping-Profile</h5>
+  <p>
     Ein Mapping-Profil legt fest, wie eine Bank-CSV gelesen wird (Trennzeichen,
     Dezimaltrennzeichen, Zeichenkodierung, Datumsformat) und welche Spalten
     welchen Feldern entsprechen. Profile sind wiederverwendbar, z.B. eines pro Bank.
   </p>
   {% if profiles %}
-  <table class="data-table">
+  <table class="border">
     <thead>
       <tr>
         <th>Name</th>
@@ -29,39 +29,43 @@
         <td><code>{{ profile.decimal_separator }}</code></td>
         <td>{{ profile.encoding }}</td>
         <td><code>{{ profile.date_format }}</code></td>
-        <td class="muted">
+        <td>
           {{ profile.date_column }} / {{ profile.payee_column }} /
           {{ profile.purpose_column }} / {{ profile.amount_column }}
         </td>
-        <td class="row-actions">
-          <a href="/mapping-profiles/{{ profile.id }}/edit">Bearbeiten</a>
+        <td class="right-align">
+          <a href="/mapping-profiles/{{ profile.id }}/edit" class="circle transparent">
+            <i>edit</i>
+          </a>
           <button
             type="button"
-            class="link-button"
+            class="circle transparent"
             hx-post="/mapping-profiles/{{ profile.id }}/delete"
             hx-target="#profile-row-{{ profile.id }}"
             hx-swap="outerHTML"
             hx-confirm="Mapping-Profil &quot;{{ profile.name }}&quot; wirklich löschen?"
-          >Löschen</button>
+          >
+            <i>delete</i>
+          </button>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="muted">Noch keine Mapping-Profile angelegt.</p>
+  <p>Noch keine Mapping-Profile angelegt.</p>
   {% endif %}
-</div>
+</article>
 
-<div class="card">
-  <h2>Neues Mapping-Profil anlegen</h2>
+<article>
+  <h5>Neues Mapping-Profil anlegen</h5>
   {% if form_error %}
-  <p class="form-error">{{ form_error }}</p>
+  <div class="error round padding">{{ form_error }}</div>
   {% endif %}
   {% set values = form_data %}
   {% set action_url = "/mapping-profiles" %}
   {% set submit_label = "Profil anlegen" %}
   {% set cancel_url = None %}
   {% include "mapping_profiles/_fields.html" %}
-</div>
+</article>
 {% endblock %}

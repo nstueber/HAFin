@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-  <h2>Konten</h2>
+<article>
+  <h5>Konten</h5>
   {% if accounts %}
-  <table class="data-table">
+  <table class="border">
     <thead>
       <tr>
         <th>Anzeigename</th>
@@ -18,46 +18,61 @@
       <tr id="account-row-{{ account.id }}">
         <td>{{ account.display_name }}</td>
         <td>{{ account.iban }}</td>
-        <td class="muted">{{ account.bank_name or "–" }}</td>
-        <td class="row-actions">
-          <a href="/accounts/{{ account.id }}/edit">Bearbeiten</a>
+        <td>{{ account.bank_name or "–" }}</td>
+        <td class="right-align">
+          <a href="/accounts/{{ account.id }}/edit" class="circle transparent">
+            <i>edit</i>
+          </a>
           <button
             type="button"
-            class="link-button"
+            class="circle transparent"
             hx-post="/accounts/{{ account.id }}/delete"
             hx-target="#account-row-{{ account.id }}"
             hx-swap="outerHTML"
             hx-confirm="Konto &quot;{{ account.display_name }}&quot; wirklich löschen?"
-          >Löschen</button>
+          >
+            <i>delete</i>
+          </button>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="muted">Noch keine Konten angelegt.</p>
+  <p>Noch keine Konten angelegt.</p>
   {% endif %}
-</div>
+</article>
 
-<div class="card">
-  <h2>Neues Konto anlegen</h2>
+<article>
+  <h5>Neues Konto anlegen</h5>
   {% if form_error %}
-  <p class="form-error">{{ form_error }}</p>
+  <div class="error round padding">{{ form_error }}</div>
   {% endif %}
-  <form method="post" action="/accounts" class="stacked-form">
-    <label>
-      Anzeigename
-      <input type="text" name="display_name" required value="{{ form_data.display_name if form_data else '' }}" />
-    </label>
-    <label>
-      IBAN
-      <input type="text" name="iban" required value="{{ form_data.iban if form_data else '' }}" />
-    </label>
-    <label>
-      Bank (optional)
-      <input type="text" name="bank_name" value="{{ form_data.bank_name if form_data else '' }}" />
-    </label>
-    <button type="submit" class="primary-button">Konto anlegen</button>
+  <form method="post" action="/accounts">
+    <div class="grid">
+      <div class="s12 m4">
+        <div class="field label border">
+          <input type="text" name="display_name" required placeholder=" "
+                 value="{{ form_data.display_name if form_data else '' }}" />
+          <label>Anzeigename</label>
+        </div>
+      </div>
+      <div class="s12 m4">
+        <div class="field label border">
+          <input type="text" name="iban" required placeholder=" "
+                 value="{{ form_data.iban if form_data else '' }}" />
+          <label>IBAN</label>
+        </div>
+      </div>
+      <div class="s12 m4">
+        <div class="field label border">
+          <input type="text" name="bank_name" placeholder=" "
+                 value="{{ form_data.bank_name if form_data else '' }}" />
+          <label>Bank (optional)</label>
+        </div>
+      </div>
+    </div>
+    <button type="submit">Konto anlegen</button>
   </form>
-</div>
+</article>
 {% endblock %}

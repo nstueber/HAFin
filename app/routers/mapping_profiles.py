@@ -43,7 +43,7 @@ def list_profiles(request: Request, session: Session = Depends(get_session)) -> 
     return templates.TemplateResponse(
         request=request,
         name="mapping_profiles/list.html",
-        context={"title": "Mapping-Profile", "profiles": profiles},
+        context={"title": "Mapping-Profile", "active_nav": "mapping_profiles", "profiles": profiles},
     )
 
 
@@ -77,6 +77,7 @@ def create_profile(
             name="mapping_profiles/list.html",
             context={
                 "title": "Mapping-Profile",
+                "active_nav": "mapping_profiles",
                 "profiles": profiles,
                 "form_error": f"Ein Mapping-Profil mit dem Namen \"{fields['name']}\" existiert bereits.",
                 "form_data": fields,
@@ -94,7 +95,7 @@ def edit_profile_form(
     return templates.TemplateResponse(
         request=request,
         name="mapping_profiles/edit.html",
-        context={"title": "Mapping-Profil bearbeiten", "profile": profile},
+        context={"title": "Mapping-Profil bearbeiten", "active_nav": "mapping_profiles", "profile": profile},
     )
 
 
@@ -130,6 +131,7 @@ def update_profile(
             name="mapping_profiles/edit.html",
             context={
                 "title": "Mapping-Profil bearbeiten",
+                "active_nav": "mapping_profiles",
                 "profile": profile,
                 "form_error": f"Ein Mapping-Profil mit dem Namen \"{fields['name']}\" existiert bereits.",
             },

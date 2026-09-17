@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-  <h2>Mapping-Profil bearbeiten</h2>
+<article>
+  <h5>Mapping-Profil bearbeiten</h5>
   {% if form_error %}
-  <p class="form-error">{{ form_error }}</p>
+  <div class="error round padding">{{ form_error }}</div>
   {% endif %}
   {% set values = profile %}
   {% set action_url = "/mapping-profiles/" ~ profile.id ~ "/edit" %}
   {% set submit_label = "Speichern" %}
   {% set cancel_url = "/mapping-profiles" %}
   {% include "mapping_profiles/_fields.html" %}
-</div>
+</article>
 {% endblock %}

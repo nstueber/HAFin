@@ -1,9 +1,11 @@
 <tr id="account-row-{{ account.id }}">
   <td>{{ account.display_name }}</td>
   <td>{{ account.iban }}</td>
-  <td class="muted">{{ account.bank_name or "–" }}</td>
-  <td class="row-actions">
-    <a href="/accounts/{{ account.id }}/edit">Bearbeiten</a>
-    <span class="form-error">{{ error }}</span>
+  <td>{{ account.bank_name or "–" }}</td>
+  <td class="right-align">
+    <a href="/accounts/{{ account.id }}/edit" class="circle transparent">
+      <i>edit</i>
+    </a>
+    <span>{{ error }}</span>
   </td>
 </tr>

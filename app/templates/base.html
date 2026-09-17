@@ -4,21 +4,42 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block page_title %}{{ title }} – Haushaltsbuch{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/style.css" />
+
+  <link href="https://cdn.jsdelivr.net/npm/beercss@5.0.3/dist/cdn/beer.min.css" rel="stylesheet" />
+  <script type="module" src="https://cdn.jsdelivr.net/npm/beercss@5.0.3/dist/cdn/beer.min.js"></script>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/material-dynamic-colors@1.1.4/dist/cdn/material-dynamic-colors.min.js"></script>
+  <script type="module">
+    ui("theme", "#03a9f4");
+  </script>
+
   <script src="/static/js/htmx.min.js"></script>
   <script src="/static/js/theme.js"></script>
 </head>
 <body>
-  <header class="app-bar">
-    <h1>Haushaltsbuch</h1>
-    <button id="theme-toggle" class="theme-toggle" type="button">Hell/Dunkel</button>
-  </header>
-  <nav class="app-nav">
-    <a href="/">Übersicht</a>
-    <a href="/accounts">Konten</a>
-    <a href="/mapping-profiles">Mapping-Profile</a>
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem("haushaltsbuch-theme");
+        if (stored === "light" || stored === "dark") {
+          document.body.classList.add(stored);
+        }
+      } catch (e) {
+        // localStorage evtl. nicht verfügbar - Systempräferenz greift.
+      }
+    })();
+  </script>
+
+  <nav class="top fixed primary toolbar">
+    <h6 class="max">Haushaltsbuch</h6>
+    <a href="/" class="{{ 'active' if active_nav == 'overview' else '' }}">Übersicht</a>
+    <a href="/accounts" class="{{ 'active' if active_nav == 'accounts' else '' }}">Konten</a>
+    <a href="/mapping-profiles" class="{{ 'active' if active_nav == 'mapping_profiles' else '' }}">Mapping-Profile</a>
+    <button id="theme-toggle" type="button" class="circle transparent">
+      <i>dark_mode</i>
+    </button>
   </nav>
-  <main>
+
+  <main class="responsive">
     {% block content %}{% endblock %}
   </main>
 </body>
