@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card max-w-2xl">
+  <h2 class="text-base font-semibold">Import-Ergebnis</h2>
+  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    Konto <span class="font-medium text-gray-700 dark:text-gray-300">{{ account.display_name }}</span>
+    · Mapping-Profil <span class="font-medium text-gray-700 dark:text-gray-300">{{ profile.name }}</span>
+  </p>
+
+  <dl class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+    <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+      <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Zeilen gelesen</dt>
+      <dd class="mt-1 text-2xl font-semibold">{{ total_rows }}</dd>
+    </div>
+    <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+      <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Importiert</dt>
+      <dd class="mt-1 text-2xl font-semibold text-green-600 dark:text-green-400">{{ imported }}</dd>
+    </div>
+    <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+      <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Übersprungen (Duplikat)</dt>
+      <dd class="mt-1 text-2xl font-semibold text-gray-500 dark:text-gray-400">{{ duplicates }}</dd>
+    </div>
+  </dl>
+
+  {% if errors %}
+  <div class="mt-6">
+    <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+      {{ errors|length }} Zeile{{ 'n' if errors|length != 1 else '' }} konnte{{ 'n' if errors|length != 1 else '' }} nicht gelesen werden:
+    </p>
+    <div class="mt-2 max-h-64 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
+      <table class="table-base">
+        <thead>
+          <tr>
+            <th>Zeile</th>
+            <th>Fehler</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for error in errors %}
+          <tr>
+            <td class="font-mono text-xs">{{ error.row }}</td>
+            <td class="text-red-600 dark:text-red-400">{{ error.message }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="mt-6 flex items-center gap-3 border-t border-gray-200 pt-5 dark:border-gray-800">
+    <a href="/import" class="btn-primary">Weitere CSV importieren</a>
+    <a href="/accounts" class="btn-outline">Zu den Konten</a>
+  </div>
+</div>
+{% endblock %}

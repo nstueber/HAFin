@@ -51,7 +51,8 @@ App: http://localhost:8000
 ```
 app/
   models/       SQLModel-Datenmodelle (Konten, Kategorien, Mapping-Profile, Transaktionen)
-  services/     CSV-Erkennungslogik (Encoding, Trennzeichen, Dezimaltrennzeichen, Datumsformat)
+  routers/      accounts, mapping_profiles, imports (CSV-Import)
+  services/     CSV-Erkennungslogik + Parsing (Encoding, Trennzeichen, Dezimaltrennzeichen, Datumsformat)
   templates/    Jinja2-Templates (inkl. _icons.html mit Heroicons-SVG-Makros)
   static/       JS (htmx, Theme-Toggle), CSS (input.css = Quelle, app.css = generiert)
   database.py   DB-Engine & Session, leichte Auto-Migration für neue Spalten
@@ -78,11 +79,37 @@ Trennzeichen (`csv.Sniffer`), Dezimaltrennzeichen und Datumsformat erkannt und
 vorbefüllt (weiterhin manuell änderbar), die Spalten-Zuordnung erfolgt per
 Dropdown aus der erkannten Kopfzeile, mit Live-Vorschau der ersten Zeilen. Die
 Anzahl der zu überspringenden Zeilen wird als `header_row_index` Teil des
-gespeicherten Mapping-Profils und muss beim eigentlichen CSV-Import
-(zukünftiger Schritt) ebenfalls angewendet werden. Die hochgeladene Datei
-liegt bis zum Speichern des Profils unter `<DATA_DIR>/tmp_mapping_uploads/`
-und wird danach gelöscht (verwaiste Uploads werden zusätzlich beim App-Start
-nach 6 Stunden automatisch aufgeräumt).
+gespeicherten Mapping-Profils gespeichert und beim eigentlichen CSV-Import
+(siehe unten) ebenfalls angewendet. Die hochgeladene Datei liegt bis zum
+Speichern des Profils unter `<DATA_DIR>/tmp_mapping_uploads/` und wird danach
+gelöscht (verwaiste Uploads werden zusätzlich beim App-Start nach 6 Stunden
+automatisch aufgeräumt).
+
+## CSV-Import
+
+Unter „Import" (eigener Navigationspunkt) werden Konto und Mapping-Profil
+ausgewählt und ein Kontoauszug hochgeladen. Die CSV wird komplett mit den im
+Mapping-Profil hinterlegten Einstellungen geparst (inkl. `header_row_index`
+zum Überspringen einer Präambel); passen die dort erwarteten Spaltennamen
+nicht zur hochgeladenen Datei, wird das mit einer klaren Fehlermeldung
+abgebrochen, statt stillschweigend leere/falsche Daten zu importieren.
+
+Jede Zeile wird einzeln behandelt:
+- Buchungsdatum/Betrag lassen sich nicht parsen → Zeile wird übersprungen und
+  im Ergebnis mit Zeilennummer und Fehlermeldung aufgelistet (der Rest der
+  Datei wird trotzdem importiert)
+- Für Konto+Buchungsdatum+Betrag+Verwendungszweck+Auftraggeber/Empfänger
+  existiert bereits eine Transaktion → Zeile gilt als Duplikat und wird
+  übersprungen (auch wirksam gegen doppelte Zeilen *innerhalb* derselben CSV,
+  dank SQLAlchemys Autoflush werden bereits in diesem Importlauf neu
+  hinzugefügte Buchungen schon vor dem Commit als Duplikat-Kandidat erkannt)
+- sonst → Transaktion anlegen, Typ (Eingang/Ausgang) aus dem Vorzeichen des
+  Betrags abgeleitet
+
+Das Ergebnis zeigt Zeilen gelesen / importiert / übersprungen (Duplikat) sowie
+eine Liste aller Zeilen mit Parse-Fehlern. Eine automatische
+Umbuchungserkennung zwischen zwei Konten ist noch nicht Teil dieses Schritts
+(kommt in einer späteren Ausbaustufe).
 
 ## IBAN-Anzeige
 

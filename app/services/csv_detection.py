@@ -6,6 +6,7 @@ import csv
 import io
 import re
 from dataclasses import dataclass
+from datetime import date as date_cls
 from datetime import datetime
 from typing import Optional
 
@@ -65,6 +66,15 @@ class PreviewRow:
     purpose: str
     amount: str
     amount_ok: bool
+
+
+@dataclass
+class ParsedTransactionRow:
+    booking_date: Optional[date_cls]
+    payee: str
+    purpose: str
+    amount: Optional[float]
+    error: Optional[str]
 
 
 def detect_encoding(raw: bytes) -> str:
@@ -280,6 +290,15 @@ def analyze(raw: bytes) -> CsvAnalysis:
     )
 
 
+def parse_amount(raw_amount: str, decimal_separator: str) -> Optional[float]:
+    other_sep = "," if decimal_separator == "." else "."
+    normalized = raw_amount.replace(other_sep, "").replace(decimal_separator, ".")
+    try:
+        return float(normalized)
+    except ValueError:
+        return None
+
+
 def reparse_for_preview(
     raw: bytes, encoding: str, delimiter: str, header_row_index: int = 0
 ) -> tuple[list[str], list[list[str]]]:
@@ -331,12 +350,11 @@ def build_preview_rows(
         amount_ok = True
         display_amount = raw_amount
         if raw_amount:
-            other_sep = "," if decimal_separator == "." else "."
-            normalized = raw_amount.replace(other_sep, "").replace(decimal_separator, ".")
-            try:
-                display_amount = f"{float(normalized):.2f}"
-            except ValueError:
+            parsed_amount = parse_amount(raw_amount, decimal_separator)
+            if parsed_amount is None:
                 amount_ok = False
+            else:
+                display_amount = f"{parsed_amount:.2f}"
         elif amount_idx is not None:
             amount_ok = False
 
@@ -348,6 +366,67 @@ def build_preview_rows(
                 purpose=cell(row, purpose_idx),
                 amount=display_amount,
                 amount_ok=amount_ok,
+            )
+        )
+    return result
+
+
+def parse_transaction_rows(
+    header: list[str],
+    rows: list[list[str]],
+    date_format: str,
+    decimal_separator: str,
+    date_column: str,
+    payee_column: str,
+    purpose_column: str,
+    amount_column: str,
+) -> list[ParsedTransactionRow]:
+    """Parst Datenzeilen für den eigentlichen CSV-Import (typisierte Werte statt Anzeige-Strings)."""
+
+    def col_index(name: str) -> Optional[int]:
+        try:
+            return header.index(name)
+        except ValueError:
+            return None
+
+    date_idx = col_index(date_column)
+    payee_idx = col_index(payee_column)
+    purpose_idx = col_index(purpose_column)
+    amount_idx = col_index(amount_column)
+
+    def cell(row: list[str], idx: Optional[int]) -> str:
+        if idx is None or idx >= len(row):
+            return ""
+        return row[idx].strip()
+
+    result: list[ParsedTransactionRow] = []
+    for row in rows:
+        raw_date = cell(row, date_idx)
+        raw_amount = cell(row, amount_idx)
+        payee = cell(row, payee_idx)
+        purpose = cell(row, purpose_idx)
+
+        booking_date: Optional[date_cls] = None
+        amount: Optional[float] = None
+        error: Optional[str] = None
+
+        try:
+            booking_date = datetime.strptime(raw_date, date_format).date()
+        except ValueError:
+            error = f"Buchungsdatum \"{raw_date}\" passt nicht zum Format {date_format}."
+
+        if error is None:
+            amount = parse_amount(raw_amount, decimal_separator)
+            if amount is None:
+                error = f"Betrag \"{raw_amount}\" konnte nicht gelesen werden."
+
+        result.append(
+            ParsedTransactionRow(
+                booking_date=booking_date,
+                payee=payee,
+                purpose=purpose,
+                amount=amount,
+                error=error,
             )
         )
     return result

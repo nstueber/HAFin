@@ -1,4 +1,4 @@
-{% from "_icons.html" import sun, moon, dashboard, bank, table_cells %}
+{% from "_icons.html" import sun, moon, dashboard, bank, table_cells, upload %}
 
 {% macro nav_item(href, icon_html, label, key, active_nav, layout) %}
 {% set is_active = active_nav == key %}
@@ -52,6 +52,7 @@
         {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'sidebar') }}
         {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'sidebar') }}
         {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'sidebar') }}
+        {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', active_nav, 'sidebar') }}
       </nav>
     </aside>
 
@@ -62,6 +63,7 @@
         {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'rail') }}
         {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'rail') }}
         {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'rail') }}
+        {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', active_nav, 'rail') }}
       </nav>
     </aside>
 
@@ -88,6 +90,7 @@
     {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'bottom') }}
     {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'bottom') }}
     {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'bottom') }}
+    {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', active_nav, 'bottom') }}
   </nav>
 </body>
 </html>
