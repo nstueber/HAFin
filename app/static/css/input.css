@@ -188,4 +188,16 @@
   dialog {
     @apply m-auto;
   }
+
+  /* Mehrfachauswahl-Checkbox-Spalte (Buchungsliste): standardmäßig ausgeblendet,
+     erscheint erst, wenn die Tabelle (via JS-Klassen-Toggle) im Mehrfachauswahl-
+     Modus ist - vermeidet, dass pro Zeile eine <td> serverseitig bedingt gerendert
+     werden muss. */
+  .ms-cell {
+    display: none;
+  }
+
+  .show-ms .ms-cell {
+    display: table-cell;
+  }
 }

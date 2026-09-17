@@ -116,17 +116,53 @@ nicht automatisch verknüpft - das passiert separat auf der Buchungen-Seite
 
 ## Kategorien & Kategorisierung
 
-Unter „Kategorien" lassen sich zweistufige Ober-/Unterkategorien anlegen,
-umbenennen, umhängen (Oberkategorie ändern) und löschen (blockiert, solange
-noch Unterkategorien oder zugeordnete Buchungen daran hängen).
+Unter „Kategorien" lassen sich zweistufige Ober-/Unterkategorien anlegen
+("Neue Kategorie anlegen" steht bewusst ganz oben auf der Seite, ohne Scrollen
+erreichbar), umbenennen und umhängen (Oberkategorie ändern). Beim Löschen wird
+zunächst ein Bestätigungsdialog (natives `<dialog>`, lazy per htmx-GET befüllt)
+mit den konkreten Konsequenzen gezeigt:
+- Hat die Kategorie Unterkategorien, werden diese beim Löschen zu
+  eigenständigen Oberkategorien (nicht mitgelöscht, nicht blockiert).
+- Sind der Kategorie Buchungen zugeordnet, wird deren Anzahl angezeigt - beim
+  Bestätigen werden genau diese Buchungen unkategorisiert (nicht mitgelöscht).
+- Die automatisch angelegte, feste Kategorie "Umbuchung" hat gar keinen
+  Löschen-Button (weder in der Liste noch serverseitig löschbar).
+
+**Export/Import** (JSON, `/categories/export` bzw. `/categories/import`):
+Export bildet die Ober-/Unterkategorie-Hierarchie 1:1 ab
+(`[{"name": "Auto", "children": ["Ladekosten", ...]}, ...]`). Import gleicht
+Namen case-insensitiv gegen vorhandene Kategorien ab (Unterkategorien nur
+innerhalb derselben, ebenfalls abgeglichenen Oberkategorie) - Treffer werden
+übersprungen, alles andere neu angelegt; am Ende steht eine kurze
+Zusammenfassung ("X importiert, Y übersprungen") über der Kategorienliste,
+analog zum CSV-Import-Ergebnis.
 
 Unter „Buchungen" werden die neuesten 200 importierten Transaktionen gelistet
 (mit Filter „nur unkategorisierte anzeigen"). Jede Zeile hat ein
 Kategorie-Dropdown, das die Zuordnung per htmx sofort speichert, ohne die
-Seite neu zu laden. Für noch unkategorisierte Buchungen wird zusätzlich ein
-Vorschlag angezeigt, wenn auf demselben Konto bereits eine andere Buchung mit
-identischem Betrag und Auftraggeber/Empfänger kategorisiert wurde - ein Klick
-übernimmt den Vorschlag, er wird nie automatisch gesetzt.
+Seite neu zu laden - ist der Filter „nur unkategorisierte anzeigen" aktiv,
+verschwindet die Zeile in diesem Moment sofort aus der Liste (die
+Kategorie-Auswahl übermittelt den aktuellen Filterzustand als Query-Parameter
+an `/transactions/{id}/category`, die Antwort ist dann leer statt der
+neu gerenderten Zeile). Für noch unkategorisierte Buchungen wird zusätzlich
+ein Vorschlag angezeigt, wenn auf demselben Konto bereits eine andere Buchung
+mit identischem Betrag und Auftraggeber/Empfänger kategorisiert wurde - ein
+Klick übernimmt den Vorschlag, er wird nie automatisch gesetzt.
+
+**Mehrfachauswahl**: Button „Mehrfachauswahl" oberhalb der Liste blendet eine
+Checkbox-Spalte ein (rein clientseitig per CSS-Klassen-Toggle, siehe
+`.ms-cell`/`.show-ms` in `input.css` - keine serverseitige Bedingung pro
+Zeile nötig). Sobald mindestens eine Buchung angehakt ist, erscheint eine
+Aktionsleiste mit Kategorie-Auswahl (Tom Select) und „Kategorie zuweisen"
+(`POST /transactions/bulk-category`, sammelt die angehakten Checkboxen via
+`hx-include`, ohne dass ein umschließendes `<form>` nötig wäre). Bereits
+verknüpfte Umbuchungen zeigen in diesem Modus gar keine Checkbox (ihre
+Kategorie ist ohnehin gesperrt) und werden von einer Mehrfachzuweisung
+still ignoriert, falls doch mit ausgewählt. Nach der Zuweisung leeren sich
+Auswahl und Aktionsleiste automatisch (jede betroffene Zeile wird per
+Out-of-Band-Swap frisch - und damit mit einer wieder unangehakten Checkbox -
+neu gerendert); der Mehrfachauswahl-Modus selbst bleibt bestehen, bis er
+manuell wieder über denselben Button verlassen wird.
 
 ## Umbuchungserkennung
 
@@ -196,6 +232,15 @@ aufklappbares `<details>`-Element umgesetzt (Klick auf die Überschrift
 klappt den gesamten Bereich ein/aus, kein JS nötig) und zeigt zu jeder Seite
 zusätzlich den Verwendungszweck an.
 
+**Einmalige Nachbesserung (Backfill) beim Start:** `transactions.backfill_umbuchung_categories()`
+wird bei jedem App-Start aufgerufen (`main.py`) und setzt bei bereits
+verknüpften Umbuchungen, die noch keine Kategorie haben (z.B. weil sie
+verknüpft wurden, bevor die automatische Kategorie-Zuweisung eingeführt
+wurde), nachträglich die feste Kategorie "Umbuchung" - sonst würde der Filter
+"Nur unkategorisierte" solche älteren Umbuchungen fälschlich weiterhin
+auflisten. Ist bereits alles korrekt gesetzt, tut der Lauf nichts (billige
+Abfrage, kein spürbarer Overhead beim Start).
+
 ## Dashboard/Übersicht
 
 Die Startseite (`/`, `app/routers/dashboard.py`) zeigt Kennzahlen und eine
@@ -239,9 +284,26 @@ Kennzahlen-Kacheln - technisch ein eigenes, sich per `onchange="this.form.submit
 selbst absendendes GET-Formular mit den übrigen Filtern als Hidden-Inputs, da
 ein echtes Dropdown (statt Filter-Links wie beim Umbuchungsfilter) verlangt war.
 
+**Klickbare Zahlen (Drilldown):** jede Einnahmen-/Ausgaben-/Netto-Zahl in den
+Kennzahlen-Kacheln (Gesamt und je Konto) sowie jeder Balken der
+Kategorie-Aufschlüsselung ist klickbar und öffnet ein zentriertes,
+scrollbares Modal (dasselbe `<dialog>`-Muster wie die "Übersprungene
+Duplikate"-Ansicht beim CSV-Import) mit den zugrunde liegenden Buchungen
+(Datum, Konto, Auftraggeber/Empfänger, Verwendungszweck, Betrag) - unter
+Berücksichtigung von Zeitraum, Konto- und Umbuchungsfilter sowie bei einem
+Kategorie-Balken zusätzlich der jeweiligen Kategorie. Technisch:
+`GET /dashboard/transactions` liefert das Modal-Inhalts-Fragment; geöffnet
+wird es nicht deklarativ (`hx-get` + `hx-on::after-request`, versionsabhängige
+Attribut-Syntax), sondern über eine kleine, wiederverwendbare JS-Hilfsfunktion
+`hafinOpenDialog(url, dialogId, contentId)` in `enhancements.js`, die intern
+`htmx.ajax(...)` nutzt und den Dialog erst nach Abschluss des Requests öffnet
+- Kacheln rufen sie per `onclick` mit den vorberechneten Filter-URLs auf,
+das Kategorie-Diagramm über Chart.js' eigenen `onClick`-Callback (liefert den
+Index des angeklickten Balkens). Dasselbe Muster (`hafinOpenDialog`) wird auch
+für die Kategorie-Löschbestätigung verwendet, siehe oben.
+
 Bewusst nicht Teil dieser ersten Version: Vergleich zu Vorperioden, Trend über
-mehrere Zeiträume, Klick-Drilldown vom Balkendiagramm in die gefilterte
-Buchungsliste.
+mehrere Zeiträume.
 
 ## IBAN-Anzeige
 
@@ -278,6 +340,12 @@ Der Seiteninhalt (`<main>` in `base.html`) ist auf `max-w-[1600px]` begrenzt
 statt der ursprünglichen `max-w-5xl` (1024px) - damit haben auch breite
 Tabellen wie die Buchungsliste neben der Sidebar genug Platz, ohne auf sehr
 breiten Monitoren komplett randlos zu wirken.
+
+Die Desktop-Sidebar und die Tablet-Icon-Rail sind `sticky top-0` mit eigener
+`h-screen`/`overflow-y-auto` - ohne das würden sie beim Scrollen einer langen
+Seite (z.B. der Buchungsliste) mit dem Hauptinhalt nach oben aus dem
+sichtbaren Bereich mitscrollen, da beide sonst nur gewöhnliche Kinder
+desselben scrollenden Flex-Containers wären.
 
 Formular-/Einzelkarten-Seiten (Konto/Kategorie/Mapping-Profil bearbeiten,
 CSV-Import, Import-Ergebnis) nutzen einheitlich `.page-narrow`

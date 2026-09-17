@@ -76,8 +76,54 @@
           Ohne Umbuchungen
         </a>
       </div>
+      <button
+        type="button"
+        class="btn-outline"
+        data-multiselect-toggle="#transactions-full-table"
+      >
+        Mehrfachauswahl
+      </button>
     </div>
   </div>
+
+  <div id="bulk-action-bar" class="mt-4 hidden flex-wrap items-center gap-3 rounded-lg border border-accent/30 bg-accent/5 p-3 dark:bg-accent/10">
+    <span class="text-sm text-gray-700 dark:text-gray-300">
+      <span id="bulk-count">0</span> ausgewählt
+    </span>
+    <select
+      name="bulk_category_id"
+      id="bulk-category-select"
+      data-searchable
+      class="form-input !py-1.5 !text-xs"
+    >
+      <option value="" disabled selected>Kategorie wählen…</option>
+      {% for group in category_groups %}
+        {% if group.children %}
+        <optgroup label="{{ group.name }}">
+          <option value="{{ group.id }}">{{ group.name }} (allgemein)</option>
+          {% for child in group.children %}
+          <option value="{{ child.id }}">{{ child.name }}</option>
+          {% endfor %}
+        </optgroup>
+        {% else %}
+        <option value="{{ group.id }}">{{ group.name }}</option>
+        {% endif %}
+      {% endfor %}
+    </select>
+    <button
+      type="button"
+      id="bulk-assign-btn"
+      class="btn-primary !px-3 !py-1.5 !text-xs"
+      disabled
+      hx-post="/transactions/bulk-category?uncategorized={{ 'true' if uncategorized_only else 'false' }}"
+      hx-include="[name='transaction_ids']:checked, #bulk-category-select"
+      hx-target="#bulk-action-bar-result"
+      hx-swap="innerHTML"
+    >
+      Kategorie zuweisen
+    </button>
+  </div>
+  <div id="bulk-action-bar-result"></div>
 
   {% if rows %}
   <div id="transactions-table" class="mt-5">
@@ -85,9 +131,10 @@
       {{ table_search("Buchungen durchsuchen…") }}
     </div>
     <div class="overflow-x-auto">
-      <table class="table-base">
+      <table class="table-base" id="transactions-full-table">
         <thead>
           <tr>
+            <th class="ms-cell"></th>
             {{ sort_th("Datum", "date") }}
             {{ sort_th("Konto", "account") }}
             {{ sort_th("Auftraggeber/Empfänger", "payee") }}

@@ -55,16 +55,18 @@
     <dl class="mt-3 space-y-1.5 text-sm">
       <div class="flex justify-between">
         <dt class="text-gray-600 dark:text-gray-300">Einnahmen</dt>
-        <dd class="font-mono text-green-600 dark:text-green-400">{{ "%.2f"|format(total_tile.income) }}</dd>
+        <dd><button type="button" class="font-mono text-green-600 hover:underline dark:text-green-400" onclick="hafinOpenDialog('{{ total_tile.urls.income }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">{{ "%.2f"|format(total_tile.income) }}</button></dd>
       </div>
       <div class="flex justify-between">
         <dt class="text-gray-600 dark:text-gray-300">Ausgaben</dt>
-        <dd class="font-mono text-red-600 dark:text-red-400">{{ "%.2f"|format(total_tile.expense) }}</dd>
+        <dd><button type="button" class="font-mono text-red-600 hover:underline dark:text-red-400" onclick="hafinOpenDialog('{{ total_tile.urls.expense }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">{{ "%.2f"|format(total_tile.expense) }}</button></dd>
       </div>
       <div class="flex justify-between border-t border-accent/20 pt-1.5">
         <dt class="font-medium text-gray-700 dark:text-gray-200">Netto</dt>
-        <dd class="font-mono font-semibold {{ 'text-green-600 dark:text-green-400' if total_tile.net >= 0 else 'text-red-600 dark:text-red-400' }}">
-          {{ "%+.2f"|format(total_tile.net) }}
+        <dd>
+          <button type="button" class="font-mono font-semibold hover:underline {{ 'text-green-600 dark:text-green-400' if total_tile.net >= 0 else 'text-red-600 dark:text-red-400' }}" onclick="hafinOpenDialog('{{ total_tile.urls.net }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">
+            {{ "%+.2f"|format(total_tile.net) }}
+          </button>
         </dd>
       </div>
     </dl>
@@ -76,16 +78,18 @@
     <dl class="mt-3 space-y-1.5 text-sm">
       <div class="flex justify-between">
         <dt class="text-gray-600 dark:text-gray-300">Einnahmen</dt>
-        <dd class="font-mono text-green-600 dark:text-green-400">{{ "%.2f"|format(tile.income) }}</dd>
+        <dd><button type="button" class="font-mono text-green-600 hover:underline dark:text-green-400" onclick="hafinOpenDialog('{{ tile.urls.income }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">{{ "%.2f"|format(tile.income) }}</button></dd>
       </div>
       <div class="flex justify-between">
         <dt class="text-gray-600 dark:text-gray-300">Ausgaben</dt>
-        <dd class="font-mono text-red-600 dark:text-red-400">{{ "%.2f"|format(tile.expense) }}</dd>
+        <dd><button type="button" class="font-mono text-red-600 hover:underline dark:text-red-400" onclick="hafinOpenDialog('{{ tile.urls.expense }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">{{ "%.2f"|format(tile.expense) }}</button></dd>
       </div>
       <div class="flex justify-between border-t border-gray-200 pt-1.5 dark:border-gray-800">
         <dt class="font-medium text-gray-700 dark:text-gray-200">Netto</dt>
-        <dd class="font-mono font-semibold {{ 'text-green-600 dark:text-green-400' if tile.net >= 0 else 'text-red-600 dark:text-red-400' }}">
-          {{ "%+.2f"|format(tile.net) }}
+        <dd>
+          <button type="button" class="font-mono font-semibold hover:underline {{ 'text-green-600 dark:text-green-400' if tile.net >= 0 else 'text-red-600 dark:text-red-400' }}" onclick="hafinOpenDialog('{{ tile.urls.net }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">
+            {{ "%+.2f"|format(tile.net) }}
+          </button>
         </dd>
       </div>
     </dl>
@@ -134,7 +138,7 @@
       var textColor = isDark ? "#d1d5db" : "#374151";
       var gridColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
 
-      new Chart(document.getElementById("category-chart"), {
+      var chart = new Chart(document.getElementById("category-chart"), {
         type: "bar",
         data: {
           labels: items.map(function (i) { return i.label; }),
@@ -149,6 +153,17 @@
           indexAxis: "y",
           responsive: true,
           maintainAspectRatio: false,
+          onClick: function (evt) {
+            var points = chart.getElementsAtEventForMode(evt, "nearest", { intersect: true }, true);
+            if (!points.length) return;
+            var item = items[points[0].index];
+            if (item) {
+              hafinOpenDialog(item.url, "dashboard-drilldown-dialog", "dashboard-drilldown-content");
+            }
+          },
+          onHover: function (evt, elements) {
+            evt.native.target.style.cursor = elements.length ? "pointer" : "default";
+          },
           plugins: {
             legend: { display: false },
             tooltip: {
@@ -171,4 +186,8 @@
   </p>
   {% endif %}
 </div>
+
+<dialog id="dashboard-drilldown-dialog" class="card page-narrow w-full backdrop:bg-gray-900/50">
+  <div id="dashboard-drilldown-content"></div>
+</dialog>
 {% endblock %}

@@ -48,8 +48,11 @@
 </head>
 <body class="h-full font-sans antialiased">
   <div class="flex min-h-screen">
-    <!-- Desktop: volle Sidebar mit Icon + Label, dauerhaft sichtbar -->
-    <aside class="hidden lg:flex lg:w-64 lg:flex-shrink-0 lg:flex-col lg:border-r lg:border-gray-200 lg:bg-white dark:lg:border-gray-800 dark:lg:bg-gray-900">
+    <!-- Desktop: volle Sidebar mit Icon + Label, dauerhaft sichtbar.
+         sticky + h-screen + eigenes overflow-y: bleibt beim Scrollen des
+         Hauptinhalts an Ort und Stelle, statt mit dem Rest der Seite
+         mitzuscrollen und nach oben aus dem Viewport zu verschwinden. -->
+    <aside class="hidden lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-64 lg:flex-shrink-0 lg:flex-col lg:overflow-y-auto lg:border-r lg:border-gray-200 lg:bg-white dark:lg:border-gray-800 dark:lg:bg-gray-900">
       <div class="flex h-16 items-center px-6">
         <span class="text-base font-semibold tracking-tight">Haushaltsbuch</span>
       </div>
@@ -64,7 +67,7 @@
     </aside>
 
     <!-- Tablet: schmale Icon-Rail -->
-    <aside class="hidden md:flex md:w-20 md:flex-shrink-0 md:flex-col md:items-center md:border-r md:border-gray-200 md:bg-white lg:hidden dark:md:border-gray-800 dark:md:bg-gray-900">
+    <aside class="hidden md:sticky md:top-0 md:flex md:h-screen md:w-20 md:flex-shrink-0 md:flex-col md:items-center md:overflow-y-auto md:border-r md:border-gray-200 md:bg-white lg:hidden dark:md:border-gray-800 dark:md:bg-gray-900">
       <div class="flex h-16 items-center"></div>
       <nav class="flex flex-1 flex-col gap-1 px-2 py-2">
         {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'rail') }}

@@ -116,9 +116,33 @@ def _category_breakdown(
         if amount == 0:
             continue
         label = "Unkategorisiert" if cat_id is None else categories_by_id[cat_id].name
-        items.append({"label": label, "amount": abs(amount), "uncategorized": cat_id is None})
+        key = "uncategorized" if cat_id is None else str(cat_id)
+        items.append(
+            {"label": label, "amount": abs(amount), "uncategorized": cat_id is None, "key": key}
+        )
     items.sort(key=lambda item: item["amount"], reverse=True)
     return items
+
+
+def _drilldown_url(
+    granularity: str,
+    ref: date,
+    transfers: str,
+    account_id: Optional[int],
+    kind: str,
+    category_key: Optional[str] = None,
+) -> str:
+    params = [
+        f"granularity={granularity}",
+        f"ref={ref.isoformat()}",
+        f"transfers={transfers}",
+        f"kind={kind}",
+    ]
+    if account_id is not None:
+        params.append(f"account_id={account_id}")
+    if category_key is not None:
+        params.append(f"category={category_key}")
+    return "/dashboard/transactions?" + "&".join(params)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -154,9 +178,20 @@ def dashboard(
     for t in txns:
         by_account[t.account_id].append(t)
 
-    total_tile = _income_expense_net(txns)
+    def _tile_urls(acc_id: Optional[int]) -> dict:
+        return {
+            "income": _drilldown_url(granularity, ref_date, transfers, acc_id, "income"),
+            "expense": _drilldown_url(granularity, ref_date, transfers, acc_id, "expense"),
+            "net": _drilldown_url(granularity, ref_date, transfers, acc_id, "net"),
+        }
+
+    total_tile = {**_income_expense_net(txns), "urls": _tile_urls(None)}
     account_tiles = [
-        {"account": acc, **_income_expense_net(by_account.get(acc.id, []))}
+        {
+            "account": acc,
+            **_income_expense_net(by_account.get(acc.id, [])),
+            "urls": _tile_urls(acc.id),
+        }
         for acc in accounts
     ]
 
@@ -165,6 +200,10 @@ def dashboard(
         t for t in txns if account_id_int is None or t.account_id == account_id_int
     ]
     chart_items = _category_breakdown(breakdown_txns, categories_by_id)
+    for item in chart_items:
+        item["url"] = _drilldown_url(
+            granularity, ref_date, transfers, account_id_int, "category", item["key"]
+        )
 
     prev_ref = _shift_ref(granularity, start, -1)
     next_ref = _shift_ref(granularity, start, 1)
@@ -192,5 +231,81 @@ def dashboard(
             "selected_account_id": account_id_int,
             "ref": ref_date.isoformat(),
             "chart_items": chart_items,
+        },
+    )
+
+
+@router.get("/dashboard/transactions", response_class=HTMLResponse)
+def dashboard_transactions(
+    request: Request,
+    granularity: str = "month",
+    ref: Optional[str] = None,
+    transfers: str = "all",
+    account_id: str = "",
+    kind: str = "net",
+    category: str = "",
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    """Liefert die Buchungen hinter einer angeklickten Zahl im Dashboard (Kennzahlen-
+    Kachel oder Kategorie-Balken) als Fragment fuer das Drilldown-Modal - beruecksichtigt
+    dieselben Zeitraum-/Konto-/Umbuchungsfilter wie die Dashboard-Ansicht selbst.
+    """
+    if granularity not in GRANULARITIES:
+        granularity = "month"
+    if transfers not in ("all", "only", "hide"):
+        transfers = "all"
+    if kind not in ("income", "expense", "net", "category"):
+        kind = "net"
+    account_id_int = int(account_id) if account_id else None
+    try:
+        ref_date = date.fromisoformat(ref) if ref else date.today()
+    except ValueError:
+        ref_date = date.today()
+
+    start, end = _period_bounds(granularity, ref_date)
+    txns = _period_transactions(session, start, end, transfers)
+    if account_id_int is not None:
+        txns = [t for t in txns if t.account_id == account_id_int]
+
+    categories_by_id = {c.id: c for c in session.exec(select(Category)).all()}
+
+    if kind == "income":
+        txns = [t for t in txns if t.amount > 0]
+    elif kind == "expense":
+        txns = [t for t in txns if t.amount < 0]
+    elif kind == "category":
+        def _matches_category(t: Transaction) -> bool:
+            top_id = _top_level_category_id(t.category_id, categories_by_id)
+            if category == "uncategorized":
+                return top_id is None
+            return category.isdigit() and top_id == int(category)
+
+        txns = [t for t in txns if _matches_category(t)]
+
+    txns.sort(key=lambda t: (t.booking_date, t.id), reverse=True)
+
+    accounts_by_id = {a.id: a for a in session.exec(select(Account)).all()}
+
+    title_map = {
+        "income": "Einnahmen",
+        "expense": "Ausgaben",
+        "net": "Alle Buchungen",
+        "category": (
+            "Unkategorisiert"
+            if category == "uncategorized"
+            else categories_by_id[int(category)].name
+            if category.isdigit() and int(category) in categories_by_id
+            else "Kategorie"
+        ),
+    }
+
+    return templates.TemplateResponse(
+        request=request,
+        name="_transaction_drilldown.html",
+        context={
+            "heading": title_map[kind],
+            "period_label": _period_label(granularity, start, end),
+            "transactions": txns,
+            "accounts_by_id": accounts_by_id,
         },
     )

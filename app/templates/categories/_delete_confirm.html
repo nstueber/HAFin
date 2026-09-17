@@ -1,0 +1,40 @@
+<h3 class="text-base font-semibold">Kategorie "{{ category.name }}" löschen?</h3>
+
+<div class="mt-4 space-y-3 text-sm text-gray-600 dark:text-gray-400">
+  {% if children %}
+  <p>
+    Diese Kategorie hat {{ children|length }} Unterkategorie{{ 'n' if children|length != 1 else '' }}
+    ({{ children|map(attribute='name')|join(', ') }}). Diese werden beim Löschen zu
+    eigenständigen Oberkategorien.
+  </p>
+  {% endif %}
+  {% if transaction_count %}
+  <p>
+    Diese Kategorie ist {{ transaction_count }} Buchung{{ 'en' if transaction_count != 1 else '' }}
+    zugewiesen. Eine Löschung entfernt die Zuweisung - die betroffenen Buchungen
+    werden unkategorisiert.
+  </p>
+  {% endif %}
+  {% if not children and not transaction_count %}
+  <p>Diese Kategorie wird aktuell nicht verwendet und kann gefahrlos gelöscht werden.</p>
+  {% endif %}
+</div>
+
+<div class="mt-5 flex justify-end gap-3">
+  <button
+    type="button"
+    class="btn-outline"
+    onclick="document.getElementById('category-delete-dialog').close()"
+  >
+    Abbrechen
+  </button>
+  <button
+    type="button"
+    class="btn-primary !bg-red-600 hover:!bg-red-700 focus-visible:!ring-red-600"
+    hx-post="/categories/{{ category.id }}/delete"
+    hx-target="#categories-container"
+    hx-swap="outerHTML"
+  >
+    Trotzdem löschen
+  </button>
+</div>

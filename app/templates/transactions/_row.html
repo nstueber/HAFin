@@ -1,4 +1,9 @@
 <tr id="transaction-row-{{ row.txn.id }}" {% if oob %}hx-swap-oob="true"{% endif %}>
+  <td class="ms-cell">
+    {% if not row.txn.counter_transaction_id %}
+    <input type="checkbox" name="transaction_ids" value="{{ row.txn.id }}" class="ms-checkbox rounded border-gray-300 text-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-900" />
+    {% endif %}
+  </td>
   <td class="date whitespace-nowrap font-mono text-xs">{{ row.txn.booking_date.isoformat() }}</td>
   <td class="account whitespace-nowrap text-xs">{{ row.account.display_name if row.account else "–" }}</td>
   <td class="payee font-medium text-gray-900 dark:text-gray-100">{{ row.txn.payee }}</td>
@@ -21,7 +26,7 @@
       name="category_id"
       data-searchable
       class="form-input !py-1.5 !text-xs"
-      hx-post="/transactions/{{ row.txn.id }}/category"
+      hx-post="/transactions/{{ row.txn.id }}/category?uncategorized={{ 'true' if uncategorized_only else 'false' }}"
       hx-trigger="change"
       hx-target="#transaction-row-{{ row.txn.id }}"
       hx-swap="outerHTML"
@@ -44,7 +49,7 @@
     <button
       type="button"
       class="mt-1 block text-left text-xs text-accent hover:underline"
-      hx-post="/transactions/{{ row.txn.id }}/category"
+      hx-post="/transactions/{{ row.txn.id }}/category?uncategorized={{ 'true' if uncategorized_only else 'false' }}"
       hx-target="#transaction-row-{{ row.txn.id }}"
       hx-swap="outerHTML"
       hx-vals='{"category_id": "{{ row.suggested_category.id }}"}'

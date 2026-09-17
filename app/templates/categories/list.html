@@ -1,53 +1,16 @@
 {% extends "base.html" %}
-{% from "_icons.html" import pencil, trash %}
-
-{% macro category_row(cat, indent=false) %}
-<div
-  id="category-row-{{ cat.id }}"
-  class="flex items-center justify-between border-b border-gray-100 py-2 last:border-0 dark:border-gray-800/60 {{ 'pl-6' if indent else '' }}"
->
-  <span class="{{ 'text-sm text-gray-700 dark:text-gray-300' if indent else 'font-medium text-gray-900 dark:text-gray-100' }}">
-    {{ cat.name }}
-  </span>
-  <div class="flex gap-1">
-    <a href="/categories/{{ cat.id }}/edit" class="btn-ghost-icon" aria-label="Bearbeiten">
-      {{ pencil() }}
-    </a>
-    <button
-      type="button"
-      class="btn-ghost-icon"
-      hx-post="/categories/{{ cat.id }}/delete"
-      hx-target="#category-row-{{ cat.id }}"
-      hx-swap="outerHTML"
-      hx-confirm="Kategorie &quot;{{ cat.name }}&quot; wirklich löschen?"
-      aria-label="Löschen"
-    >
-      {{ trash() }}
-    </button>
-  </div>
-</div>
-{% endmacro %}
+{% from "_icons.html" import upload %}
 
 {% block content %}
-<div class="card">
-  <h2 class="text-base font-semibold">Kategorien</h2>
-  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-    Ober- und Unterkategorien zur Einordnung von Buchungen, z.B. "Wohnen" &gt; "Strom".
-  </p>
-
-  {% if top_level %}
-  <div class="mt-5">
-    {% for cat in top_level %}
-    {{ category_row(cat) }}
-    {% for child in children_by_parent.get(cat.id, []) %}
-    {{ category_row(child, indent=true) }}
-    {% endfor %}
-    {% endfor %}
-  </div>
-  {% else %}
-  <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">Noch keine Kategorien angelegt.</p>
-  {% endif %}
+{% if imported or skipped %}
+<div class="alert-error !border-green-200 !bg-green-50 !text-green-700 dark:!border-green-900 dark:!bg-green-950/40 dark:!text-green-400">
+  Import abgeschlossen: {{ imported }} Kategorie{{ 'n' if imported != 1 else '' }} importiert,
+  {{ skipped }} bereits vorhanden (übersprungen).
 </div>
+{% endif %}
+{% if import_error %}
+<div class="alert-error">{{ import_error }}</div>
+{% endif %}
 
 <div class="card">
   <h2 class="text-base font-semibold">Neue Kategorie anlegen</h2>
@@ -69,5 +32,33 @@
     </div>
     <button type="submit" class="btn-primary mt-5">Kategorie anlegen</button>
   </form>
+</div>
+
+{% include "categories/_list.html" %}
+
+<div class="card">
+  <h2 class="text-base font-semibold">Import/Export</h2>
+  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    Kategorienliste (inkl. Ober-/Unterkategorie-Struktur) als JSON sichern oder
+    aus einer zuvor exportierten Datei ergänzen. Beim Import werden vorhandene
+    Kategorien anhand des Namens erkannt und übersprungen, nur neue werden
+    angelegt.
+  </p>
+  <div class="mt-4 flex flex-wrap items-center gap-3">
+    <a href="/categories/export" class="btn-outline">Als JSON exportieren</a>
+    <form method="post" action="/categories/import" enctype="multipart/form-data" class="flex items-center gap-2">
+      <input
+        type="file"
+        name="json_file"
+        accept=".json,application/json"
+        required
+        class="block text-sm text-gray-500 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:text-gray-400 dark:file:bg-gray-800 dark:file:text-gray-200 dark:hover:file:bg-gray-700"
+      />
+      <button type="submit" class="btn-outline">
+        {{ upload("h-4 w-4") }}
+        <span>Importieren</span>
+      </button>
+    </form>
+  </div>
 </div>
 {% endblock %}

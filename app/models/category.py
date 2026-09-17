@@ -2,6 +2,8 @@ from typing import List, Optional
 
 from sqlmodel import Field, Relationship, SQLModel
 
+UMBUCHUNG_CATEGORY_NAME = "Umbuchung"
+
 
 class Category(SQLModel, table=True):
     """Hierarchische Kategorie (Ober-/Unterkategorie), frei verwaltbar."""

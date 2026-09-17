@@ -1,0 +1,39 @@
+<h3 class="text-base font-semibold">{{ heading }}</h3>
+<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ period_label }} · {{ transactions|length }} Buchung{{ 'en' if transactions|length != 1 else '' }}</p>
+
+{% if transactions %}
+<div class="mt-4 max-h-96 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
+  <table class="table-base">
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Konto</th>
+        <th>Auftraggeber/Empfänger</th>
+        <th>Verwendungszweck</th>
+        <th class="text-right">Betrag</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for txn in transactions %}
+      <tr>
+        <td class="whitespace-nowrap font-mono text-xs">{{ txn.booking_date.isoformat() }}</td>
+        <td class="whitespace-nowrap text-xs">{{ accounts_by_id[txn.account_id].display_name if txn.account_id in accounts_by_id else "–" }}</td>
+        <td class="font-medium text-gray-900 dark:text-gray-100">{{ txn.payee }}</td>
+        <td class="max-w-xs truncate text-xs text-gray-500 dark:text-gray-400" title="{{ txn.purpose or '' }}">{{ txn.purpose or "–" }}</td>
+        <td class="whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if txn.amount > 0 else '' }}">
+          {{ "%.2f"|format(txn.amount) }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="mt-4 text-sm text-gray-500 dark:text-gray-400">Keine Buchungen gefunden.</p>
+{% endif %}
+
+<div class="mt-4 flex justify-end">
+  <button type="button" class="btn-outline" onclick="document.getElementById('dashboard-drilldown-dialog').close()">
+    Schließen
+  </button>
+</div>

@@ -5,8 +5,15 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlmodel import Session, select
 
-from app.database import get_session
-from app.models import Account, Category, RejectedTransferPair, Transaction, TransactionType
+from app.database import engine, get_session
+from app.models import (
+    Account,
+    Category,
+    RejectedTransferPair,
+    Transaction,
+    TransactionType,
+    UMBUCHUNG_CATEGORY_NAME,
+)
 from app.templating import templates
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -14,7 +21,6 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 LIST_LIMIT = 200
 TRANSFER_WINDOW_DAYS = 2
 SUGGESTIONS_LIMIT = 20
-UMBUCHUNG_CATEGORY_NAME = "Umbuchung"
 
 
 def _category_groups(session: Session) -> list[dict]:
@@ -63,6 +69,31 @@ def _get_or_create_umbuchung_category(session: Session) -> Category:
         session.commit()
         session.refresh(category)
     return category
+
+
+def backfill_umbuchung_categories() -> None:
+    """Einmalige Nachbesserung fuer Umbuchungen, die verknuepft wurden, bevor
+    das automatische Setzen der Kategorie "Umbuchung" eingefuehrt wurde -
+    ohne das wuerde der Filter "Nur unkategorisierte" solche (bereits
+    verknuepften) Umbuchungen faelschlich weiterhin als unkategorisiert
+    listen. Wird bei jedem Start aufgerufen; ist bereits alles gesetzt,
+    macht der Lauf nichts.
+    """
+    with Session(engine) as session:
+        affected = session.exec(
+            select(Transaction).where(
+                Transaction.transaction_type == TransactionType.UMBUCHUNG,
+                Transaction.counter_transaction_id.is_not(None),
+                Transaction.category_id.is_(None),
+            )
+        ).all()
+        if not affected:
+            return
+        umbuchung_category = _get_or_create_umbuchung_category(session)
+        for txn in affected:
+            txn.category_id = umbuchung_category.id
+            session.add(txn)
+        session.commit()
 
 
 def _load_rejected_pairs(session: Session) -> set:
@@ -239,12 +270,19 @@ def _build_row(
     }
 
 
-def _render_row_html(session: Session, txn: Transaction, oob: bool) -> str:
+def _render_row_html(
+    session: Session, txn: Transaction, oob: bool, uncategorized_only: bool = False
+) -> str:
     accounts_by_id, categories_by_id = _lookup_dicts(session)
     rejected_pairs = _load_rejected_pairs(session)
     row = _build_row(session, txn, accounts_by_id, categories_by_id, rejected_pairs)
     template = templates.env.get_template("transactions/_row.html")
-    return template.render(row=row, category_groups=_category_groups(session), oob=oob)
+    return template.render(
+        row=row,
+        category_groups=_category_groups(session),
+        oob=oob,
+        uncategorized_only=uncategorized_only,
+    )
 
 
 @router.get("", response_class=HTMLResponse)
@@ -302,6 +340,7 @@ def set_transaction_category(
     request: Request,
     transaction_id: int,
     category_id: str = Form(""),
+    uncategorized: bool = False,
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     txn = session.get(Transaction, transaction_id)
@@ -310,7 +349,49 @@ def set_transaction_category(
         session.add(txn)
         session.commit()
         session.refresh(txn)
-    return HTMLResponse(content=_render_row_html(session, txn, oob=False))
+    # Wenn der Filter "Nur unkategorisierte" aktiv ist und die Buchung gerade
+    # eine Kategorie bekommen hat, passt die Zeile nicht mehr zum Filter -
+    # sofort ausblenden statt sie (fehlerhaft weiterhin sichtbar) neu zu rendern.
+    if uncategorized and txn.category_id is not None:
+        return HTMLResponse(content="")
+    return HTMLResponse(
+        content=_render_row_html(session, txn, oob=False, uncategorized_only=uncategorized)
+    )
+
+
+@router.post("/bulk-category", response_class=HTMLResponse)
+def bulk_set_category(
+    request: Request,
+    transaction_ids: list[int] = Form(default=[]),
+    bulk_category_id: str = Form(""),
+    uncategorized: bool = False,
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    category_id = int(bulk_category_id) if bulk_category_id else None
+    txns = []
+    for tid in transaction_ids:
+        txn = session.get(Transaction, tid)
+        # Umbuchungen (verknuepft) haben eine gesperrte, feste Kategorie -
+        # bei einer Mehrfachauswahl still ueberspringen statt einen Fehler zu werfen.
+        if txn is None or txn.counter_transaction_id is not None:
+            continue
+        txn.category_id = category_id
+        session.add(txn)
+        txns.append(txn)
+    session.commit()
+
+    html = ""
+    for txn in txns:
+        session.refresh(txn)
+        if uncategorized and txn.category_id is not None:
+            # "delete"-OOB-Swap statt "true": entfernt die Zeile ganz aus dem DOM,
+            # anstatt sie durch eine leere <tr> zu ersetzen.
+            html += f'<tr id="transaction-row-{txn.id}" hx-swap-oob="delete"></tr>'
+        else:
+            html += _render_row_html(
+                session, txn, oob=True, uncategorized_only=uncategorized
+            )
+    return HTMLResponse(content=html)
 
 
 @router.post("/{transaction_id}/mark-transfer", response_class=HTMLResponse)

@@ -1,0 +1,53 @@
+{% from "_icons.html" import pencil, trash %}
+
+{% macro category_row(cat, indent=false) %}
+<div
+  id="category-row-{{ cat.id }}"
+  class="flex items-center justify-between border-b border-gray-100 py-2 last:border-0 dark:border-gray-800/60 {{ 'pl-6' if indent else '' }}"
+>
+  <span class="{{ 'text-sm text-gray-700 dark:text-gray-300' if indent else 'font-medium text-gray-900 dark:text-gray-100' }}">
+    {{ cat.name }}
+  </span>
+  <div class="flex gap-1">
+    <a href="/categories/{{ cat.id }}/edit" class="btn-ghost-icon" aria-label="Bearbeiten">
+      {{ pencil() }}
+    </a>
+    {% if cat.name != umbuchung_category_name %}
+    <button
+      type="button"
+      class="btn-ghost-icon"
+      onclick="hafinOpenDialog('/categories/{{ cat.id }}/delete-confirm', 'category-delete-dialog', 'category-delete-dialog-content')"
+      aria-label="Löschen"
+    >
+      {{ trash() }}
+    </button>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+<div id="categories-container">
+  <div id="categories-list" class="card">
+    <h2 class="text-base font-semibold">Kategorien</h2>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      Ober- und Unterkategorien zur Einordnung von Buchungen, z.B. "Wohnen" &gt; "Strom".
+    </p>
+
+    {% if top_level %}
+    <div class="mt-5">
+      {% for cat in top_level %}
+      {{ category_row(cat) }}
+      {% for child in children_by_parent.get(cat.id, []) %}
+      {{ category_row(child, indent=true) }}
+      {% endfor %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">Noch keine Kategorien angelegt.</p>
+    {% endif %}
+  </div>
+
+  <dialog id="category-delete-dialog" class="card page-narrow w-full backdrop:bg-gray-900/50">
+    <div id="category-delete-dialog-content"></div>
+  </dialog>
+</div>
