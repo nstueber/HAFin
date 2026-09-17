@@ -51,7 +51,7 @@ App: http://localhost:8000
 ```
 app/
   models/       SQLModel-Datenmodelle (Konten, Kategorien, Mapping-Profile, Transaktionen)
-  routers/      accounts, mapping_profiles, imports (CSV-Import)
+  routers/      accounts, transactions, categories, mapping_profiles, imports (CSV-Import)
   services/     CSV-Erkennungslogik + Parsing (Encoding, Trennzeichen, Dezimaltrennzeichen, Datumsformat)
   templates/    Jinja2-Templates (inkl. _icons.html mit Heroicons-SVG-Makros)
   static/       JS (htmx, Theme-Toggle), CSS (input.css = Quelle, app.css = generiert)
@@ -110,6 +110,20 @@ Das Ergebnis zeigt Zeilen gelesen / importiert / übersprungen (Duplikat) sowie
 eine Liste aller Zeilen mit Parse-Fehlern. Eine automatische
 Umbuchungserkennung zwischen zwei Konten ist noch nicht Teil dieses Schritts
 (kommt in einer späteren Ausbaustufe).
+
+## Kategorien & Kategorisierung
+
+Unter „Kategorien" lassen sich zweistufige Ober-/Unterkategorien anlegen,
+umbenennen, umhängen (Oberkategorie ändern) und löschen (blockiert, solange
+noch Unterkategorien oder zugeordnete Buchungen daran hängen).
+
+Unter „Buchungen" werden die neuesten 200 importierten Transaktionen gelistet
+(mit Filter „nur unkategorisierte anzeigen"). Jede Zeile hat ein
+Kategorie-Dropdown, das die Zuordnung per htmx sofort speichert, ohne die
+Seite neu zu laden. Für noch unkategorisierte Buchungen wird zusätzlich ein
+Vorschlag angezeigt, wenn auf demselben Konto bereits eine andere Buchung mit
+identischem Betrag und Auftraggeber/Empfänger kategorisiert wurde - ein Klick
+übernimmt den Vorschlag, er wird nie automatisch gesetzt.
 
 ## IBAN-Anzeige
 

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h2 class="text-base font-semibold">Buchungen</h2>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        Zeigt die neuesten {{ limit }} Buchungen{{ " (nur unkategorisierte)" if uncategorized_only else "" }}.
+      </p>
+    </div>
+    {% if uncategorized_only %}
+    <a href="/transactions" class="btn-outline flex-shrink-0">Alle anzeigen</a>
+    {% else %}
+    <a href="/transactions?uncategorized=1" class="btn-outline flex-shrink-0">Nur unkategorisierte anzeigen</a>
+    {% endif %}
+  </div>
+
+  {% if rows %}
+  <div class="mt-5 overflow-x-auto">
+    <table class="table-base">
+      <thead>
+        <tr>
+          <th>Datum</th>
+          <th>Konto</th>
+          <th>Auftraggeber/Empfänger</th>
+          <th>Verwendungszweck</th>
+          <th class="text-right">Betrag</th>
+          <th>Kategorie</th>
+        </tr>
+      </thead>
+      <tbody id="transaction-rows">
+        {% for row in rows %}
+        {% include "transactions/_row.html" %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">
+    {{ "Keine unkategorisierten Buchungen." if uncategorized_only else "Noch keine Buchungen importiert." }}
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

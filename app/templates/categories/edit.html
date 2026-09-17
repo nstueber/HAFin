@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card max-w-lg">
+  <h2 class="text-base font-semibold">Kategorie bearbeiten</h2>
+  {% if form_error %}
+  <div class="alert-error mt-4">{{ form_error }}</div>
+  {% endif %}
+  <form method="post" action="/categories/{{ category.id }}/edit" class="mt-4">
+    <div>
+      <label class="form-label">Name</label>
+      <input type="text" name="name" required class="form-input" value="{{ category.name }}" />
+    </div>
+    <div class="mt-4">
+      <label class="form-label">Oberkategorie (optional)</label>
+      <select name="parent_id" class="form-input">
+        <option value="" {% if not category.parent_id %}selected{% endif %}>– keine (Oberkategorie) –</option>
+        {% for cat in top_level %}
+        <option value="{{ cat.id }}" {% if category.parent_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="mt-5 flex items-center gap-3">
+      <button type="submit" class="btn-primary">Speichern</button>
+      <a href="/categories" class="btn-outline">Abbrechen</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

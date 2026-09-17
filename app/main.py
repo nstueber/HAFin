@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
-from app.routers import accounts, imports, mapping_profiles
+from app.routers import accounts, categories, imports, mapping_profiles, transactions
 from app.templating import templates
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -15,6 +15,8 @@ app = FastAPI(title="Haushaltsbuch")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 app.include_router(accounts.router)
+app.include_router(transactions.router)
+app.include_router(categories.router)
 app.include_router(mapping_profiles.router)
 app.include_router(imports.router)
 

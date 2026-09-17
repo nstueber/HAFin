@@ -1,4 +1,4 @@
-{% from "_icons.html" import sun, moon, dashboard, bank, table_cells, upload %}
+{% from "_icons.html" import sun, moon, dashboard, bank, table_cells, upload, banknotes, tag %}
 
 {% macro nav_item(href, icon_html, label, key, active_nav, layout) %}
 {% set is_active = active_nav == key %}
@@ -51,6 +51,8 @@
       <nav class="flex flex-1 flex-col gap-1 px-3 py-2">
         {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'sidebar') }}
         {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'sidebar') }}
+        {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', active_nav, 'sidebar') }}
+        {{ nav_item('/categories', tag('h-5 w-5'), 'Kategorien', 'categories', active_nav, 'sidebar') }}
         {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'sidebar') }}
         {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', active_nav, 'sidebar') }}
       </nav>
@@ -62,6 +64,8 @@
       <nav class="flex flex-1 flex-col gap-1 px-2 py-2">
         {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'rail') }}
         {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'rail') }}
+        {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', active_nav, 'rail') }}
+        {{ nav_item('/categories', tag('h-5 w-5'), 'Kategorien', 'categories', active_nav, 'rail') }}
         {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'rail') }}
         {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', active_nav, 'rail') }}
       </nav>
@@ -89,6 +93,8 @@
   <nav class="fixed inset-x-0 bottom-0 z-40 flex border-t border-gray-200 bg-white md:hidden dark:border-gray-800 dark:bg-gray-900">
     {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'bottom') }}
     {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'bottom') }}
+    {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', active_nav, 'bottom') }}
+    {{ nav_item('/categories', tag('h-5 w-5'), 'Kategorien', 'categories', active_nav, 'bottom') }}
     {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'bottom') }}
     {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', active_nav, 'bottom') }}
   </nav>

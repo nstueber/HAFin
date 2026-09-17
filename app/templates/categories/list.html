@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_icons.html" import pencil, trash %}
+
+{% macro category_row(cat, indent=false) %}
+<div
+  id="category-row-{{ cat.id }}"
+  class="flex items-center justify-between border-b border-gray-100 py-2 last:border-0 dark:border-gray-800/60 {{ 'pl-6' if indent else '' }}"
+>
+  <span class="{{ 'text-sm text-gray-700 dark:text-gray-300' if indent else 'font-medium text-gray-900 dark:text-gray-100' }}">
+    {{ cat.name }}
+  </span>
+  <div class="flex gap-1">
+    <a href="/categories/{{ cat.id }}/edit" class="btn-ghost-icon" aria-label="Bearbeiten">
+      {{ pencil() }}
+    </a>
+    <button
+      type="button"
+      class="btn-ghost-icon"
+      hx-post="/categories/{{ cat.id }}/delete"
+      hx-target="#category-row-{{ cat.id }}"
+      hx-swap="outerHTML"
+      hx-confirm="Kategorie &quot;{{ cat.name }}&quot; wirklich löschen?"
+      aria-label="Löschen"
+    >
+      {{ trash() }}
+    </button>
+  </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="card">
+  <h2 class="text-base font-semibold">Kategorien</h2>
+  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    Ober- und Unterkategorien zur Einordnung von Buchungen, z.B. "Wohnen" &gt; "Strom".
+  </p>
+
+  {% if top_level %}
+  <div class="mt-5">
+    {% for cat in top_level %}
+    {{ category_row(cat) }}
+    {% for child in children_by_parent.get(cat.id, []) %}
+    {{ category_row(child, indent=true) }}
+    {% endfor %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">Noch keine Kategorien angelegt.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 class="text-base font-semibold">Neue Kategorie anlegen</h2>
+  <form method="post" action="/categories" class="mt-4">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div>
+        <label class="form-label">Name</label>
+        <input type="text" name="name" required class="form-input" />
+      </div>
+      <div>
+        <label class="form-label">Oberkategorie (optional)</label>
+        <select name="parent_id" class="form-input">
+          <option value="">– keine (Oberkategorie) –</option>
+          {% for cat in top_level %}
+          <option value="{{ cat.id }}">{{ cat.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn-primary mt-5">Kategorie anlegen</button>
+  </form>
+</div>
+{% endblock %}
