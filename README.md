@@ -107,9 +107,9 @@ Jede Zeile wird einzeln behandelt:
   Betrags abgeleitet
 
 Das Ergebnis zeigt Zeilen gelesen / importiert / übersprungen (Duplikat) sowie
-eine Liste aller Zeilen mit Parse-Fehlern. Eine automatische
-Umbuchungserkennung zwischen zwei Konten ist noch nicht Teil dieses Schritts
-(kommt in einer späteren Ausbaustufe).
+eine Liste aller Zeilen mit Parse-Fehlern. Umbuchungen zwischen zwei eigenen
+Konten werden beim Import nicht automatisch verknüpft - das passiert separat
+auf der Buchungen-Seite (siehe unten).
 
 ## Kategorien & Kategorisierung
 
@@ -124,6 +124,32 @@ Seite neu zu laden. Für noch unkategorisierte Buchungen wird zusätzlich ein
 Vorschlag angezeigt, wenn auf demselben Konto bereits eine andere Buchung mit
 identischem Betrag und Auftraggeber/Empfänger kategorisiert wurde - ein Klick
 übernimmt den Vorschlag, er wird nie automatisch gesetzt.
+
+## Umbuchungserkennung
+
+Jede Buchung ohne Verknüpfung wird gegen alle anderen noch unverknüpften
+Buchungen auf *anderen* Konten geprüft: exakt gegenteiliger Betrag,
+Buchungsdatum innerhalb von ±2 Tagen. Passende Kandidaten werden in der
+Buchungen-Liste als "Treffer" mit Konto/Datum/Auftraggeber angezeigt - ein
+Klick auf "Als Umbuchung bestätigen" verknüpft beide Seiten (setzt
+`counter_transaction_id` gegenseitig und den Typ auf `umbuchung`) und
+aktualisiert beide betroffenen Zeilen in der Liste per htmx-Out-of-Band-Swap
+(auch wenn die Gegenbuchung in einer anderen Tabellenzeile steht). Es wird nie
+automatisch verknüpft, nur vorgeschlagen.
+
+Eine Buchung kann auch ohne bekannte Gegenbuchung manuell als Umbuchung
+markiert werden (z.B. weil die CSV des Zielkontos noch nicht importiert
+wurde) - sie bleibt dann unverknüpft, taucht aber weiterhin in der
+Kandidatensuche auf. Wird später die passende Gegenbuchung importiert, wird
+der Treffer vorgeschlagen; war die bestehende Seite bereits manuell markiert,
+ist das in der Kandidatenliste mit "(markiert)" gekennzeichnet und
+entsprechend priorisiert. Sowohl die manuelle Markierung als auch eine
+bestätigte Verknüpfung lassen sich wieder aufheben (Typ fällt dann auf
+Eingang/Ausgang anhand des Vorzeichens zurück).
+
+Bestätigte Umbuchungen bleiben in der Buchungsliste sichtbar, lassen sich dort
+aber über den Filter "Umbuchungen ausblenden" ausblenden (kombinierbar mit
+"nur unkategorisierte anzeigen").
 
 ## IBAN-Anzeige
 

@@ -1,4 +1,4 @@
-<tr id="transaction-row-{{ row.txn.id }}">
+<tr id="transaction-row-{{ row.txn.id }}" {% if oob %}hx-swap-oob="true"{% endif %}>
   <td class="whitespace-nowrap font-mono text-xs">{{ row.txn.booking_date.isoformat() }}</td>
   <td class="whitespace-nowrap text-xs">{{ row.account.display_name if row.account else "–" }}</td>
   <td class="font-medium text-gray-900 dark:text-gray-100">{{ row.txn.payee }}</td>
@@ -35,6 +35,68 @@
     >
       Vorschlag: {{ row.suggested_category.name }} übernehmen
     </button>
+    {% endif %}
+  </td>
+  <td class="min-w-[14rem] text-xs">
+    {% if row.txn.counter_transaction_id %}
+    <div class="text-gray-700 dark:text-gray-300">
+      ↔ {{ row.counter_account.display_name if row.counter_account else "–" }}
+      <span class="text-gray-400 dark:text-gray-500">({{ row.counter_txn.booking_date.isoformat() if row.counter_txn else "–" }})</span>
+    </div>
+    <button
+      type="button"
+      class="mt-1 text-accent hover:underline"
+      hx-post="/transactions/{{ row.txn.id }}/unlink-transfer"
+      hx-target="#transaction-row-{{ row.txn.id }}"
+      hx-swap="outerHTML"
+    >
+      Verknüpfung aufheben
+    </button>
+    {% else %}
+      {% if row.txn.transaction_type.value == "umbuchung" %}
+      <div class="text-gray-500 dark:text-gray-400">Manuell markiert</div>
+      <button
+        type="button"
+        class="mt-1 block text-accent hover:underline"
+        hx-post="/transactions/{{ row.txn.id }}/unmark-transfer"
+        hx-target="#transaction-row-{{ row.txn.id }}"
+        hx-swap="outerHTML"
+      >
+        Markierung aufheben
+      </button>
+      {% endif %}
+
+      {% for cand in row.transfer_candidates %}
+      <div class="mt-1 rounded-md bg-accent/5 p-1.5">
+        <div class="text-gray-600 dark:text-gray-400">
+          Treffer: {{ cand.account.display_name if cand.account else "–" }} ·
+          {{ cand.txn.booking_date.isoformat() }} · {{ cand.txn.payee }}
+          {% if cand.txn.transaction_type.value == "umbuchung" %}<span class="text-accent">(markiert)</span>{% endif %}
+        </div>
+        <button
+          type="button"
+          class="text-accent hover:underline"
+          hx-post="/transactions/{{ row.txn.id }}/confirm-transfer"
+          hx-vals='{"counter_transaction_id": "{{ cand.txn.id }}"}'
+          hx-target="#transaction-row-{{ row.txn.id }}"
+          hx-swap="outerHTML"
+        >
+          Als Umbuchung bestätigen
+        </button>
+      </div>
+      {% endfor %}
+
+      {% if not row.transfer_candidates and row.txn.transaction_type.value != "umbuchung" %}
+      <button
+        type="button"
+        class="text-accent hover:underline"
+        hx-post="/transactions/{{ row.txn.id }}/mark-transfer"
+        hx-target="#transaction-row-{{ row.txn.id }}"
+        hx-swap="outerHTML"
+      >
+        Als Umbuchung markieren
+      </button>
+      {% endif %}
     {% endif %}
   </td>
 </tr>

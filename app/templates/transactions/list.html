@@ -6,14 +6,17 @@
     <div>
       <h2 class="text-base font-semibold">Buchungen</h2>
       <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        Zeigt die neuesten {{ limit }} Buchungen{{ " (nur unkategorisierte)" if uncategorized_only else "" }}.
+        Zeigt die neuesten {{ limit }} Buchungen{% if uncategorized_only %} (nur unkategorisierte){% endif %}{% if hide_transfers %} (Umbuchungen ausgeblendet){% endif %}.
       </p>
     </div>
-    {% if uncategorized_only %}
-    <a href="/transactions" class="btn-outline flex-shrink-0">Alle anzeigen</a>
-    {% else %}
-    <a href="/transactions?uncategorized=1" class="btn-outline flex-shrink-0">Nur unkategorisierte anzeigen</a>
-    {% endif %}
+    <div class="flex flex-shrink-0 flex-wrap gap-2">
+      <a href="{{ toggle_uncategorized_url }}" class="btn-outline {{ '!border-accent !text-accent' if uncategorized_only else '' }}">
+        Nur unkategorisierte
+      </a>
+      <a href="{{ toggle_hide_transfers_url }}" class="btn-outline {{ '!border-accent !text-accent' if hide_transfers else '' }}">
+        Umbuchungen ausblenden
+      </a>
+    </div>
   </div>
 
   {% if rows %}
@@ -27,6 +30,7 @@
           <th>Verwendungszweck</th>
           <th class="text-right">Betrag</th>
           <th>Kategorie</th>
+          <th>Umbuchung</th>
         </tr>
       </thead>
       <tbody id="transaction-rows">
