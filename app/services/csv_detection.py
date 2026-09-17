@@ -11,8 +11,18 @@ from typing import Optional
 
 from charset_normalizer import from_bytes
 
+# Reale Bank-Exports haben vor der eigentlichen Kopfzeile oft eine
+# Metadaten-Präambel (Kontoinhaber, IBAN, Zeitraum, Hinweistexte, ...). Die
+# Kopfzeilen-Erkennung sucht innerhalb der ersten RAW_PREVIEW_LINE_LIMIT
+# Zeilen (das ist auch das, was dem Nutzer zur manuellen Auswahl angezeigt
+# wird); danach werden bis zu SAMPLE_ROW_LIMIT Datenzeilen für die weiteren
+# Heuristiken (Dezimaltrennzeichen, Datumsformat) herangezogen.
+RAW_PREVIEW_LINE_LIMIT = 20
+HEADER_LOOKAHEAD = 5
+MIN_HEADER_FIELDS = 4
 SAMPLE_ROW_LIMIT = 25
 PREVIEW_ROW_LIMIT = 5
+_TOTAL_LINE_BUDGET = RAW_PREVIEW_LINE_LIMIT + HEADER_LOOKAHEAD + SAMPLE_ROW_LIMIT
 
 DATE_FORMAT_CANDIDATES = [
     "%d.%m.%Y",
@@ -28,7 +38,7 @@ COLUMN_NAME_HINTS: dict[str, tuple[str, ...]] = {
     "date_column": ("buchungsdatum", "buchungstag", "datum", "date", "valuta"),
     "payee_column": ("auftraggeber", "empfänger", "empfaenger", "begünstigter", "beguenstigter", "name", "payee"),
     "purpose_column": ("verwendungszweck", "zweck", "buchungstext", "purpose", "text", "beschreibung"),
-    "amount_column": ("betrag", "amount", "umsatz", "wert"),
+    "amount_column": ("betrag", "amount", "umsatz"),
 }
 
 _NUMERIC_RE = re.compile(r"^-?\d[\d.,]*\d$|^-?\d$")
@@ -40,6 +50,8 @@ class CsvAnalysis:
     delimiter: str
     decimal_separator: str
     date_format: str
+    header_row_index: int
+    raw_preview_lines: list[str]
     header: list[str]
     sample_rows: list[list[str]]
     column_guess: dict[str, Optional[str]]
@@ -94,24 +106,73 @@ def decode(raw: bytes, encoding: str) -> str:
         return raw.decode("utf-8", errors="replace")
 
 
-def detect_delimiter(text: str) -> str:
-    lines = text.splitlines()
-    sample = "\n".join(lines[:SAMPLE_ROW_LIMIT])
+def decode_lines(raw: bytes, encoding: str, limit: int = _TOTAL_LINE_BUDGET) -> list[str]:
+    return decode(raw, encoding).splitlines()[:limit]
+
+
+def detect_delimiter(lines: list[str]) -> str:
+    sample = "\n".join(lines)
     try:
         dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
         return dialect.delimiter
     except csv.Error:
         pass
-    header_line = lines[0] if lines else ""
-    counts = {d: header_line.count(d) for d in (",", ";", "\t")}
+    # Fallback: über alle Zeilen hinweg das häufigste Kandidaten-Zeichen zählen
+    # (robuster als nur die erste Zeile, falls die eine Präambel-Zeile ist).
+    counts = {d: sample.count(d) for d in (",", ";", "\t")}
     best = max(counts, key=counts.get)
     return best if counts[best] > 0 else ","
 
 
-def parse_rows(
-    text: str, delimiter: str, limit: Optional[int] = None
+def detect_header_row(
+    lines: list[str],
+    delimiter: str,
+    min_fields: int = MIN_HEADER_FIELDS,
+    lookahead: int = HEADER_LOOKAHEAD,
+) -> int:
+    """Sucht die wahrscheinlichste Kopfzeile innerhalb der Präambel.
+
+    Nimmt die erste Zeile, deren (naive, trennzeichen-basierte) Feldanzahl
+    mindestens min_fields beträgt UND mit der Mehrheit der nachfolgenden
+    Zeilen übereinstimmt. Naives Split reicht hier: Kopf-/Datenzeilen mit in
+    Anführungszeichen stehenden Trennzeichen sind für Bank-CSVs die Ausnahme,
+    und diese Heuristik bestimmt nur die Position, nicht die eigentlichen
+    Feldwerte.
+    """
+    search_limit = min(len(lines), RAW_PREVIEW_LINE_LIMIT)
+    field_counts = [len(line.split(delimiter)) for line in lines]
+    for i in range(search_limit):
+        count = field_counts[i]
+        if count < min_fields:
+            continue
+        following = field_counts[i + 1 : i + 1 + lookahead]
+        if not following:
+            continue
+        matches = sum(1 for c in following if c == count)
+        if matches >= (len(following) // 2 + 1):
+            return i
+    return 0
+
+
+def parse_from_header(
+    raw: bytes,
+    encoding: str,
+    delimiter: str,
+    header_row_index: int = 0,
+    limit: Optional[int] = None,
 ) -> tuple[list[str], list[list[str]]]:
-    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    """Parst Header + Datenzeilen ab header_row_index (Präambel wird übersprungen).
+
+    Nutzt csv.reader über den zusammengesetzten Text (nicht zeilenweise), damit
+    in Anführungszeichen stehende, mehrzeilige Feldwerte innerhalb der
+    Datenzeilen korrekt erkannt werden.
+    """
+    text = decode(raw, encoding)
+    text_lines = text.splitlines()
+    if header_row_index >= len(text_lines):
+        return [], []
+    remaining_text = "\n".join(text_lines[header_row_index:])
+    reader = csv.reader(io.StringIO(remaining_text), delimiter=delimiter)
     all_rows = list(reader)
     if not all_rows:
         return [], []
@@ -168,33 +229,51 @@ def detect_date_format(rows: list[list[str]]) -> str:
 
 
 def guess_column_mapping(header: list[str]) -> dict[str, Optional[str]]:
+    """Ordnet Kopfzeilen-Namen den Zielfeldern per Namens-Heuristik zu.
+
+    Hints werden je Feld in Prioritätsreihenfolge geprüft (erst der
+    spezifischste), jeweils über die gesamte Kopfzeile hinweg, bevor auf den
+    nächst-generischeren Hint zurückgefallen wird. Das verhindert, dass ein
+    generischerer Hint (z.B. "text") eine Spalte matcht, die weiter hinten in
+    der Kopfzeile steht, obwohl eine speziellere, korrektere Spalte (z.B.
+    "Verwendungszweck" statt "Buchungstext") ebenfalls vorhanden ist.
+    """
     guess: dict[str, Optional[str]] = {key: None for key in COLUMN_NAME_HINTS}
     used: set[str] = set()
     for field_key, hints in COLUMN_NAME_HINTS.items():
-        for col_name in header:
-            if col_name in used:
-                continue
-            normalized = col_name.strip().lower()
-            if any(hint in normalized for hint in hints):
-                guess[field_key] = col_name
-                used.add(col_name)
+        for hint in hints:
+            if guess[field_key] is not None:
                 break
+            for col_name in header:
+                if col_name in used:
+                    continue
+                if hint in col_name.strip().lower():
+                    guess[field_key] = col_name
+                    used.add(col_name)
+                    break
     return guess
 
 
 def analyze(raw: bytes) -> CsvAnalysis:
     encoding = detect_encoding(raw)
-    text = decode(raw, encoding)
-    delimiter = detect_delimiter(text)
-    header, data_rows = parse_rows(text, delimiter, limit=SAMPLE_ROW_LIMIT)
+    all_lines = decode_lines(raw, encoding)
+    raw_preview_lines = all_lines[:RAW_PREVIEW_LINE_LIMIT]
+
+    delimiter = detect_delimiter(all_lines)
+    header_row_index = detect_header_row(all_lines, delimiter)
+
+    header, data_rows = parse_from_header(raw, encoding, delimiter, header_row_index, limit=SAMPLE_ROW_LIMIT)
     decimal_separator = detect_decimal_separator(data_rows)
     date_format = detect_date_format(data_rows)
     column_guess = guess_column_mapping(header)
+
     return CsvAnalysis(
         encoding=encoding,
         delimiter=delimiter,
         decimal_separator=decimal_separator,
         date_format=date_format,
+        header_row_index=header_row_index,
+        raw_preview_lines=raw_preview_lines,
         header=header,
         sample_rows=data_rows[:PREVIEW_ROW_LIMIT],
         column_guess=column_guess,
@@ -202,10 +281,9 @@ def analyze(raw: bytes) -> CsvAnalysis:
 
 
 def reparse_for_preview(
-    raw: bytes, encoding: str, delimiter: str
+    raw: bytes, encoding: str, delimiter: str, header_row_index: int = 0
 ) -> tuple[list[str], list[list[str]]]:
-    text = decode(raw, encoding)
-    return parse_rows(text, delimiter, limit=PREVIEW_ROW_LIMIT)
+    return parse_from_header(raw, encoding, delimiter, header_row_index, limit=PREVIEW_ROW_LIMIT)
 
 
 def build_preview_rows(

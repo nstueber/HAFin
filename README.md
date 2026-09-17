@@ -54,7 +54,8 @@ app/
   services/     CSV-Erkennungslogik (Encoding, Trennzeichen, Dezimaltrennzeichen, Datumsformat)
   templates/    Jinja2-Templates (inkl. _icons.html mit Heroicons-SVG-Makros)
   static/       JS (htmx, Theme-Toggle), CSS (input.css = Quelle, app.css = generiert)
-  database.py   DB-Engine & Session
+  database.py   DB-Engine & Session, leichte Auto-Migration für neue Spalten
+  templating.py Zentrales Jinja2Templates-Objekt inkl. format_iban-Filter
   main.py       FastAPI-App, Health-Check, Startseite
 ```
 
@@ -66,14 +67,31 @@ SQLite-Datei, Pfad über Umgebungsvariable `DATABASE_PATH` konfigurierbar
 ## Mapping-Profil aus Beispiel-CSV anlegen
 
 Beim Anlegen eines neuen Mapping-Profils wird zunächst eine Beispiel-CSV
-hochgeladen. Zeichenkodierung (`charset-normalizer`), Trennzeichen
-(`csv.Sniffer`), Dezimaltrennzeichen und Datumsformat werden daraus
-automatisch erkannt und vorbefüllt (weiterhin manuell änderbar), die
-Spalten-Zuordnung erfolgt per Dropdown aus der erkannten Kopfzeile, mit
-Live-Vorschau der ersten Zeilen. Die hochgeladene Datei liegt bis zum
-Speichern des Profils unter `<DATA_DIR>/tmp_mapping_uploads/` und wird danach
-gelöscht (verwaiste Uploads werden zusätzlich beim App-Start nach 6 Stunden
-automatisch aufgeräumt).
+hochgeladen. Die ersten 20 Rohzeilen werden mit Zeilennummern angezeigt, eine
+wahrscheinliche Kopfzeile wird automatisch vorausgewählt (erste Zeile, deren
+Feldanzahl zu mehreren Folgezeilen passt und mindestens 4 Felder hat) - das
+überspringt korrekt Metadaten-Präambeln, wie sie z.B. ING-Exports vor der
+eigentlichen Tabelle einfügen (Kontoinhaber, IBAN, Zeitraum, Hinweistexte).
+Per Klick auf eine andere Zeile lässt sich die Kopfzeile manuell korrigieren.
+Erst ab der gewählten Kopfzeile werden Zeichenkodierung (`charset-normalizer`),
+Trennzeichen (`csv.Sniffer`), Dezimaltrennzeichen und Datumsformat erkannt und
+vorbefüllt (weiterhin manuell änderbar), die Spalten-Zuordnung erfolgt per
+Dropdown aus der erkannten Kopfzeile, mit Live-Vorschau der ersten Zeilen. Die
+Anzahl der zu überspringenden Zeilen wird als `header_row_index` Teil des
+gespeicherten Mapping-Profils und muss beim eigentlichen CSV-Import
+(zukünftiger Schritt) ebenfalls angewendet werden. Die hochgeladene Datei
+liegt bis zum Speichern des Profils unter `<DATA_DIR>/tmp_mapping_uploads/`
+und wird danach gelöscht (verwaiste Uploads werden zusätzlich beim App-Start
+nach 6 Stunden automatisch aufgeräumt).
+
+## IBAN-Anzeige
+
+IBANs werden intern kanonisch ohne Leerzeichen gespeichert, aber überall in
+der UI über den zentralen Jinja2-Filter `format_iban` (`app/templating.py`)
+in 4er-Gruppen formatiert angezeigt (`DE34 5001 0517 5422 1005 39`). Eingaben
+beim Anlegen/Bearbeiten eines Kontos werden unabhängig von Leerzeichen
+akzeptiert (z.B. beim Copy-Paste aus Bank-Portalen) und vor dem Speichern
+normalisiert.
 
 ## Styling: Tailwind CSS (Standalone-CLI, ohne Node.js)
 

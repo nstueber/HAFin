@@ -1,5 +1,37 @@
 {% from "_icons.html" import warning %}
-<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+<div>
+  <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+    Kopfzeile auswählen (erste {{ raw_preview_lines|length }} Zeilen der Rohdatei):
+  </p>
+  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+    Zeilen vor der markierten Kopfzeile (z.B. Metadaten-Präambel des Bank-Exports)
+    werden beim Einlesen übersprungen. Wähle bei Bedarf eine andere Zeile aus.
+  </p>
+  <div class="mt-2 max-h-64 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
+    {% for line in raw_preview_lines %}
+    <label class="flex cursor-pointer items-start gap-3 border-b border-gray-100 px-3 py-1.5 text-xs last:border-0 hover:bg-gray-50 dark:border-gray-800/60 dark:hover:bg-gray-800/50 {{ 'bg-accent/5' if loop.index0 == header_row_index else '' }}">
+      <input
+        type="radio"
+        name="header_row_index"
+        value="{{ loop.index0 }}"
+        {% if loop.index0 == header_row_index %}checked{% endif %}
+        class="mt-0.5 h-3.5 w-3.5 flex-shrink-0 accent-accent"
+      />
+      <span class="w-6 flex-shrink-0 text-right font-mono text-gray-400 dark:text-gray-500">{{ loop.index }}</span>
+      {% if line %}
+      <span class="overflow-x-auto whitespace-pre font-mono text-gray-700 dark:text-gray-300">{{ line }}</span>
+      {% else %}
+      <span class="font-mono italic text-gray-400 dark:text-gray-600">(leere Zeile)</span>
+      {% endif %}
+    </label>
+    {% endfor %}
+    {% if not raw_preview_lines %}
+    <p class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Keine Zeilen gefunden.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
   <div>
     <label class="form-label">Trennzeichen</label>
     <select name="delimiter" class="form-input">

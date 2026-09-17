@@ -1,20 +1,19 @@
-from pathlib import Path
+import re
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models import Account, Transaction
+from app.templating import templates
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
-templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
 
 
 def _normalize_iban(iban: str) -> str:
-    return iban.replace(" ", "").upper().strip()
+    return re.sub(r"\s+", "", iban).upper()
 
 
 @router.get("", response_class=HTMLResponse)

@@ -5,16 +5,21 @@ from time import time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.database import DATA_DIR, get_session
 from app.models import MappingProfile
-from app.services.csv_detection import analyze, build_preview_rows, reparse_for_preview
+from app.services.csv_detection import (
+    RAW_PREVIEW_LINE_LIMIT,
+    analyze,
+    build_preview_rows,
+    decode_lines,
+    reparse_for_preview,
+)
+from app.templating import templates
 
 router = APIRouter(prefix="/mapping-profiles", tags=["mapping-profiles"])
-templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
 
 TMP_UPLOAD_DIR = DATA_DIR / "tmp_mapping_uploads"
 STALE_UPLOAD_MAX_AGE_SECONDS = 6 * 3600
@@ -59,6 +64,8 @@ def _step2_context(
     delimiter: str,
     decimal_separator: str,
     date_format: str,
+    header_row_index: int,
+    raw_preview_lines: list,
     header: list,
     mapping: dict,
     preview_rows: list,
@@ -74,6 +81,8 @@ def _step2_context(
         "delimiter": delimiter,
         "decimal_separator": decimal_separator,
         "date_format": date_format,
+        "header_row_index": header_row_index,
+        "raw_preview_lines": raw_preview_lines,
         "header": header,
         "mapping": mapping,
         "preview_rows": preview_rows,
@@ -90,6 +99,7 @@ def _form_to_fields(
     decimal_separator: str,
     encoding: str,
     date_format: str,
+    header_row_index: int,
     date_column: str,
     payee_column: str,
     purpose_column: str,
@@ -101,6 +111,7 @@ def _form_to_fields(
         "decimal_separator": decimal_separator,
         "encoding": encoding.strip(),
         "date_format": date_format.strip(),
+        "header_row_index": max(0, header_row_index),
         "date_column": date_column.strip(),
         "payee_column": payee_column.strip(),
         "purpose_column": purpose_column.strip(),
@@ -170,6 +181,8 @@ async def upload_sample_csv(
             delimiter=result.delimiter,
             decimal_separator=result.decimal_separator,
             date_format=result.date_format,
+            header_row_index=result.header_row_index,
+            raw_preview_lines=result.raw_preview_lines,
             header=result.header,
             mapping=result.column_guess,
             preview_rows=preview_rows,
@@ -186,11 +199,13 @@ def preview_sample_csv(
     decimal_separator: str = Form("."),
     encoding: str = Form("utf-8"),
     date_format: str = Form("%Y-%m-%d"),
+    header_row_index: int = Form(0),
     date_column: str = Form(""),
     payee_column: str = Form(""),
     purpose_column: str = Form(""),
     amount_column: str = Form(""),
 ) -> HTMLResponse:
+    header_row_index = max(0, header_row_index)
     upload_path = _upload_path(upload_id)
     mapping = _clean_mapping(
         {
@@ -210,6 +225,8 @@ def preview_sample_csv(
                 "delimiter": delimiter,
                 "decimal_separator": decimal_separator,
                 "date_format": date_format,
+                "header_row_index": header_row_index,
+                "raw_preview_lines": [],
                 "header": [],
                 "mapping": mapping,
                 "preview_rows": [],
@@ -219,10 +236,12 @@ def preview_sample_csv(
             },
         )
 
-    header, rows = reparse_for_preview(upload_path.read_bytes(), encoding, delimiter)
-    # Falls Trennzeichen/Encoding gewechselt wurden, existieren zuvor gewählte
-    # Spalten evtl. nicht mehr - Auswahl dann verwerfen statt eine ungültige
-    # Zuordnung stehen zu lassen.
+    raw = upload_path.read_bytes()
+    raw_preview_lines = decode_lines(raw, encoding, limit=RAW_PREVIEW_LINE_LIMIT)
+    header, rows = reparse_for_preview(raw, encoding, delimiter, header_row_index)
+    # Falls Trennzeichen/Encoding/Kopfzeile gewechselt wurden, existieren zuvor
+    # gewählte Spalten evtl. nicht mehr - Auswahl dann verwerfen statt eine
+    # ungültige Zuordnung stehen zu lassen.
     for key, value in mapping.items():
         if value and value not in header:
             mapping[key] = None
@@ -240,6 +259,8 @@ def preview_sample_csv(
             "delimiter": delimiter,
             "decimal_separator": decimal_separator,
             "date_format": date_format,
+            "header_row_index": header_row_index,
+            "raw_preview_lines": raw_preview_lines,
             "header": header,
             "mapping": mapping,
             "preview_rows": preview_rows,
@@ -259,12 +280,14 @@ def create_profile(
     decimal_separator: str = Form("."),
     encoding: str = Form("utf-8"),
     date_format: str = Form("%Y-%m-%d"),
+    header_row_index: int = Form(0),
     date_column: str = Form(""),
     payee_column: str = Form(""),
     purpose_column: str = Form(""),
     amount_column: str = Form(""),
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
+    header_row_index = max(0, header_row_index)
     upload_path = _upload_path(upload_id)
     mapping = _clean_mapping(
         {
@@ -276,9 +299,11 @@ def create_profile(
     )
 
     def _rerender(error: str, status_code: int = 400) -> HTMLResponse:
-        header, rows = [], []
+        header, rows, raw_preview_lines = [], [], []
         if upload_path.exists():
-            header, rows = reparse_for_preview(upload_path.read_bytes(), encoding, delimiter)
+            raw = upload_path.read_bytes()
+            raw_preview_lines = decode_lines(raw, encoding, limit=RAW_PREVIEW_LINE_LIMIT)
+            header, rows = reparse_for_preview(raw, encoding, delimiter, header_row_index)
         preview_rows = build_preview_rows(header, rows, date_format, decimal_separator, **mapping)
         return templates.TemplateResponse(
             request=request,
@@ -290,6 +315,8 @@ def create_profile(
                 delimiter=delimiter,
                 decimal_separator=decimal_separator,
                 date_format=date_format,
+                header_row_index=header_row_index,
+                raw_preview_lines=raw_preview_lines,
                 header=header,
                 mapping=mapping,
                 preview_rows=preview_rows,
@@ -309,6 +336,7 @@ def create_profile(
         decimal_separator=decimal_separator,
         encoding=encoding,
         date_format=date_format.strip(),
+        header_row_index=header_row_index,
         date_column=mapping["date_column"],
         payee_column=mapping["payee_column"],
         purpose_column=mapping["purpose_column"],
@@ -346,6 +374,7 @@ def update_profile(
     decimal_separator: str = Form("."),
     encoding: str = Form("utf-8"),
     date_format: str = Form("%Y-%m-%d"),
+    header_row_index: int = Form(0),
     date_column: str = Form(...),
     payee_column: str = Form(...),
     purpose_column: str = Form(...),
@@ -354,7 +383,7 @@ def update_profile(
 ) -> HTMLResponse:
     profile = session.get(MappingProfile, profile_id)
     fields = _form_to_fields(
-        name, delimiter, decimal_separator, encoding, date_format,
+        name, delimiter, decimal_separator, encoding, date_format, header_row_index,
         date_column, payee_column, purpose_column, amount_column,
     )
     for key, value in fields.items():

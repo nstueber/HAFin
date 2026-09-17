@@ -19,7 +19,7 @@
         {% for account in accounts %}
         <tr id="account-row-{{ account.id }}">
           <td class="font-medium text-gray-900 dark:text-gray-100">{{ account.display_name }}</td>
-          <td class="font-mono text-xs">{{ account.iban }}</td>
+          <td class="font-mono text-xs">{{ account.iban|format_iban }}</td>
           <td>{{ account.bank_name or "–" }}</td>
           <td class="text-right">
             <div class="flex justify-end gap-1">

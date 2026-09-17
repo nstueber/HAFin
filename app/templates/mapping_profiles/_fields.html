@@ -33,6 +33,16 @@
       <label class="form-label">Datumsformat</label>
       <input type="text" name="date_format" required class="form-input" value="{{ values.date_format or '%Y-%m-%d' }}" />
     </div>
+    <div>
+      <label class="form-label">Kopfzeile (Zeilennummer, 1-basiert)</label>
+      <input type="number" name="header_row_index_display" min="1" class="form-input"
+             value="{{ (values.header_row_index or 0) + 1 }}"
+             oninput="document.getElementById('header_row_index').value = Math.max(0, (parseInt(this.value, 10) || 1) - 1)" />
+      <input type="hidden" id="header_row_index" name="header_row_index" value="{{ values.header_row_index or 0 }}" />
+      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        Zeilen davor (z.B. Metadaten-Präambel) werden beim Einlesen übersprungen.
+      </p>
+    </div>
   </div>
 
   <p class="mt-6 text-sm font-medium text-gray-700 dark:text-gray-300">

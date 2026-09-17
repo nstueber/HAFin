@@ -14,7 +14,7 @@
       </div>
       <div>
         <label class="form-label">IBAN</label>
-        <input type="text" name="iban" required class="form-input" value="{{ account.iban }}" />
+        <input type="text" name="iban" required class="form-input" value="{{ account.iban|format_iban }}" />
       </div>
       <div>
         <label class="form-label">Bank (optional)</label>

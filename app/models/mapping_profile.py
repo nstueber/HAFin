@@ -20,6 +20,9 @@ class MappingProfile(SQLModel, table=True):
     decimal_separator: str = Field(default=".")
     encoding: str = Field(default="utf-8")
     date_format: str = Field(default="%Y-%m-%d")
+    # 0-basierter Index der Kopfzeile in der Rohdatei - alles davor (z.B.
+    # Metadaten-Präambel mancher Bank-Exports) wird beim Parsen übersprungen.
+    header_row_index: int = Field(default=0)
 
     # Spaltenzuordnung: Namen der CSV-Header-Spalten
     date_column: str
