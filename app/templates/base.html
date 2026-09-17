@@ -1,3 +1,9 @@
+{% macro nav_link(href, icon, label, key) -%}
+<a href="{{ href }}" class="{{ 'active' if active_nav == key else '' }}">
+  <i>{{ icon }}</i>
+  <div>{{ label }}</div>
+</a>
+{%- endmacro %}
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -29,15 +35,39 @@
     })();
   </script>
 
-  <nav class="top fixed primary toolbar">
-    <h6 class="max">Haushaltsbuch</h6>
-    <a href="/" class="{{ 'active' if active_nav == 'overview' else '' }}">Übersicht</a>
-    <a href="/accounts" class="{{ 'active' if active_nav == 'accounts' else '' }}">Konten</a>
-    <a href="/mapping-profiles" class="{{ 'active' if active_nav == 'mapping_profiles' else '' }}">Mapping-Profile</a>
-    <button id="theme-toggle" type="button" class="circle transparent">
-      <i>dark_mode</i>
-    </button>
+  <!-- Desktop: volle Sidebar mit Icon + Label, dauerhaft sichtbar -->
+  <nav class="left max l">
+    <header>
+      <h6>Haushaltsbuch</h6>
+    </header>
+    {{ nav_link('/', 'dashboard', 'Übersicht', 'overview') }}
+    {{ nav_link('/accounts', 'account_balance', 'Konten', 'accounts') }}
+    {{ nav_link('/mapping-profiles', 'rule', 'Mapping-Profile', 'mapping_profiles') }}
   </nav>
+
+  <!-- Tablet: schmale Sidebar, nur Icons + kleine Beschriftung -->
+  <nav class="left m">
+    {{ nav_link('/', 'dashboard', 'Übersicht', 'overview') }}
+    {{ nav_link('/accounts', 'account_balance', 'Konten', 'accounts') }}
+    {{ nav_link('/mapping-profiles', 'rule', 'Mapping-Profile', 'mapping_profiles') }}
+  </nav>
+
+  <!-- Mobile: Bottom-Navigation -->
+  <nav class="bottom s">
+    {{ nav_link('/', 'dashboard', 'Übersicht', 'overview') }}
+    {{ nav_link('/accounts', 'account_balance', 'Konten', 'accounts') }}
+    {{ nav_link('/mapping-profiles', 'rule', 'Mapping-Profile', 'mapping_profiles') }}
+  </nav>
+
+  <!-- Schmale Titelleiste: aktueller Seitentitel + Light/Dark-Umschalter -->
+  <header class="fixed">
+    <nav>
+      <h6 class="max">{{ title }}</h6>
+      <button id="theme-toggle" type="button" class="circle transparent">
+        <i>dark_mode</i>
+      </button>
+    </nav>
+  </header>
 
   <main class="responsive">
     {% block content %}{% endblock %}
