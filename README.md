@@ -2,8 +2,10 @@
 
 Haushaltsbuch-App zur Überwachung von Ausgaben und Einnahmen über mehrere
 Bankkonten hinweg. Backend: FastAPI + SQLModel (SQLite), Frontend:
-Jinja2-Templates + htmx. Läuft perspektivisch als Home-Assistant-Add-on,
-während der Entwicklung eigenständig per Docker.
+Jinja2-Templates + htmx, UI-Framework [Beer CSS](https://www.beercss.com/)
+(Material-Design-3-Komponenten, per CDN eingebunden) mit HA-Blau (#03a9f4)
+als Primärfarbe. Läuft perspektivisch als Home-Assistant-Add-on, während der
+Entwicklung eigenständig per Docker.
 
 ## Lokal starten (venv)
 
@@ -32,7 +34,7 @@ App: http://localhost:8000
 app/
   models/       SQLModel-Datenmodelle (Konten, Kategorien, Mapping-Profile, Transaktionen)
   templates/    Jinja2-Templates
-  static/       CSS, JS (htmx, Theme-Toggle)
+  static/       JS (htmx, Theme-Toggle); Styling kommt von Beer CSS per CDN
   database.py   DB-Engine & Session
   main.py       FastAPI-App, Health-Check, Startseite
 ```
@@ -41,3 +43,9 @@ app/
 
 SQLite-Datei, Pfad über Umgebungsvariable `DATABASE_PATH` konfigurierbar
 (Standard: `/data/haushaltsbuch.db`, passend für den Docker-Container).
+
+## Hinweis: Internetzugriff im Browser
+
+Beer CSS wird per CDN (jsDelivr) eingebunden, htmx dagegen lokal ausgeliefert.
+Für die Darstellung braucht der Browser, der die App aufruft, also
+Internetzugriff auf `cdn.jsdelivr.net`.
