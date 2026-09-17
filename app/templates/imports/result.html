@@ -17,11 +17,65 @@
       <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Importiert</dt>
       <dd class="mt-1 text-2xl font-semibold text-green-600 dark:text-green-400">{{ imported }}</dd>
     </div>
+    {% if duplicates %}
+    <button
+      type="button"
+      class="rounded-lg border border-gray-200 p-4 text-left transition-colors hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50"
+      onclick="document.getElementById('duplicates-dialog').showModal()"
+    >
+      <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Übersprungen (Duplikat)</dt>
+      <dd class="mt-1 text-2xl font-semibold text-accent underline">{{ duplicates|length }}</dd>
+    </button>
+    {% else %}
     <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
       <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Übersprungen (Duplikat)</dt>
-      <dd class="mt-1 text-2xl font-semibold text-gray-500 dark:text-gray-400">{{ duplicates }}</dd>
+      <dd class="mt-1 text-2xl font-semibold text-gray-500 dark:text-gray-400">0</dd>
     </div>
+    {% endif %}
   </dl>
+
+  {% if duplicates %}
+  <dialog id="duplicates-dialog" class="card w-full max-w-2xl backdrop:bg-gray-900/50">
+    <h3 class="text-base font-semibold">Übersprungene Duplikate</h3>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      Diese Zeilen entsprachen bereits vorhandenen Buchungen (gleiches Datum, Betrag,
+      Verwendungszweck und Auftraggeber/Empfänger auf diesem Konto).
+    </p>
+    <div class="mt-4 max-h-96 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
+      <table class="table-base">
+        <thead>
+          <tr>
+            <th>Zeile</th>
+            <th>Datum</th>
+            <th>Auftraggeber/Empfänger</th>
+            <th>Verwendungszweck</th>
+            <th class="text-right">Betrag</th>
+            <th>Bereits vorhanden seit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for dup in duplicates %}
+          <tr>
+            <td class="font-mono text-xs">{{ dup.row }}</td>
+            <td class="whitespace-nowrap font-mono text-xs">{{ dup.booking_date.isoformat() }}</td>
+            <td>{{ dup.payee }}</td>
+            <td class="text-xs text-gray-500 dark:text-gray-400">{{ dup.purpose or "–" }}</td>
+            <td class="whitespace-nowrap text-right font-mono">{{ "%.2f"|format(dup.amount) }}</td>
+            <td class="whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
+              {{ dup.existing_created_at.date().isoformat() }} (#{{ dup.existing_transaction_id }})
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-4 flex justify-end">
+      <button type="button" class="btn-outline" onclick="document.getElementById('duplicates-dialog').close()">
+        Schließen
+      </button>
+    </div>
+  </dialog>
+  {% endif %}
 
   {% if errors %}
   <div class="mt-6">
@@ -51,7 +105,8 @@
 
   <div class="mt-6 flex items-center gap-3 border-t border-gray-200 pt-5 dark:border-gray-800">
     <a href="/import" class="btn-primary">Weitere CSV importieren</a>
-    <a href="/accounts" class="btn-outline">Zu den Konten</a>
+    <!-- TODO: sobald das Dashboard existiert, hierhin verlinken statt zu den Buchungen -->
+    <a href="/transactions" class="btn-outline">Zu den Buchungen</a>
   </div>
 </div>
 {% endblock %}

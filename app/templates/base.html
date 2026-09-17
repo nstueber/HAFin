@@ -37,9 +37,13 @@
     })();
   </script>
   <title>{% block page_title %}{{ title }} – Haushaltsbuch{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/css/tom-select.min.css" />
   <link rel="stylesheet" href="/static/css/app.css" />
   <script src="/static/js/htmx.min.js"></script>
   <script src="/static/js/theme.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/list.js/2.3.1/list.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/js/tom-select.complete.min.js"></script>
+  <script src="/static/js/enhancements.js"></script>
 </head>
 <body class="h-full font-sans antialiased">
   <div class="flex min-h-screen">
@@ -82,7 +86,7 @@
       </header>
 
       <main class="flex-1 pb-20 md:pb-8">
-        <div class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+        <div class="mx-auto max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
           {% block content %}{% endblock %}
         </div>
       </main>

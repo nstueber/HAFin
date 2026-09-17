@@ -107,9 +107,12 @@ Jede Zeile wird einzeln behandelt:
   Betrags abgeleitet
 
 Das Ergebnis zeigt Zeilen gelesen / importiert / übersprungen (Duplikat) sowie
-eine Liste aller Zeilen mit Parse-Fehlern. Umbuchungen zwischen zwei eigenen
-Konten werden beim Import nicht automatisch verknüpft - das passiert separat
-auf der Buchungen-Seite (siehe unten).
+eine Liste aller Zeilen mit Parse-Fehlern. Die Duplikat-Kachel ist klickbar und
+öffnet ein Dialog mit allen übersprungenen Zeilen (Datum, Auftraggeber/
+Empfänger, Verwendungszweck, Betrag, Referenz auf die bereits vorhandene
+Transaktion). Umbuchungen zwischen zwei eigenen Konten werden beim Import
+nicht automatisch verknüpft - das passiert separat auf der Buchungen-Seite
+(siehe unten).
 
 ## Kategorien & Kategorisierung
 
@@ -181,3 +184,47 @@ ausgeliefert - für die reine Anzeige der App braucht der Browser keinen
 Internetzugriff. Internetzugriff wird nur beim `docker build` selbst benötigt
 (Tailwind-CLI-Download) sowie beim lokalen `./tailwindcss`-Download für die
 Entwicklung.
+
+Der Seiteninhalt (`<main>` in `base.html`) ist auf `max-w-[1600px]` begrenzt
+statt der ursprünglichen `max-w-5xl` (1024px) - damit haben auch breite
+Tabellen wie die Buchungsliste neben der Sidebar genug Platz, ohne auf sehr
+breiten Monitoren komplett randlos zu wirken.
+
+## Sortier-/durchsuchbare Tabellen
+
+Alle Tabellen (Konten, Mapping-Profile, Buchungen) nutzen
+[List.js](https://listjs.com/) (per CDN, `cdnjs.cloudflare.com`) für
+clientseitiges Sortieren per Klick auf die Spaltenüberschrift (mit
+Pfeil-Indikator für die aktuelle Richtung) und ein Suchfeld, das über alle
+sichtbaren Spalten filtert - kein Server-Roundtrip, da die Listen ohnehin
+serverseitig begrenzt geladen werden. Wiederverwendbare Bausteine dafür:
+
+- `app/templates/_table.html`: Jinja-Makros `table_search(...)` und
+  `sort_th(label, sort_key)` für Suchfeld bzw. sortierbare Spaltenüberschrift
+  mit Pfeil-Icon (Styling der Pfeil-Zustände in `input.css` unter `.sort-th`)
+- `app/static/js/enhancements.js`: `hafinInitTable(containerId, valueNames)`
+  initialisiert eine Tabelle; nach jedem htmx-Swap werden alle registrierten
+  Tabellen automatisch neu indiziert (`list.reIndex()`), damit z.B. eine per
+  htmx aktualisierte Buchungszeile weiterhin korrekt sortier-/durchsuchbar
+  bleibt
+
+Für eine neue Tabelle: `<tbody class="list" id="…">`, pro Spalte eine
+`{{ sort_th(...) }}`-Kopfzeile und eine `<td>` mit passendem Value-Name als
+Klasse, dazu `{{ table_search(...) }}` und ein
+`hafinInitTable("…", [...])`-Aufruf - siehe `app/templates/accounts/list.html`
+als einfaches Beispiel.
+
+## Durchsuchbare Auswahlfelder (Tom Select)
+
+[Tom Select](https://tom-select.js.org/) (per CDN, `cdn.jsdelivr.net`) macht
+native `<select>`-Felder durchsuchbar, inkl. `<optgroup>`-Unterstützung für
+die hierarchische Kategorie-Auswahl (Tom Select erkennt vorhandene Optgroups
+im `<select>` automatisch, keine zusätzliche Konfiguration nötig). Reusable:
+jedes `<select data-searchable>` wird von `app/static/js/enhancements.js`
+automatisch beim Laden und nach jedem htmx-Swap initialisiert (Prüfung über
+die von Tom Select selbst gesetzte `.tomselect`-Property, damit nichts doppelt
+initialisiert wird). Aktuell genutzt für die Kategorie-Auswahl in der
+Buchungsliste sowie die Konto-/Mapping-Profil-Auswahl beim CSV-Import; für
+neue Selects reicht das Attribut `data-searchable`, kein weiterer JS-Code
+nötig. Styling-Overrides für Tom Select liegen in `input.css` unter
+`.ts-wrapper`/`.ts-control`/`.ts-dropdown`.

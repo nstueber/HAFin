@@ -15,19 +15,24 @@ LIST_LIMIT = 200
 TRANSFER_WINDOW_DAYS = 2
 
 
-def _category_options(session: Session) -> list[dict]:
+def _category_groups(session: Session) -> list[dict]:
+    """Kategorien gruppiert für die Dropdown-Darstellung (Optgroups je Oberkategorie)."""
     top_level = session.exec(
         select(Category).where(Category.parent_id.is_(None)).order_by(Category.name)
     ).all()
-    options = []
+    groups = []
     for cat in top_level:
-        options.append({"id": cat.id, "label": cat.name, "indent": False})
         children = session.exec(
             select(Category).where(Category.parent_id == cat.id).order_by(Category.name)
         ).all()
-        for child in children:
-            options.append({"id": child.id, "label": child.name, "indent": True})
-    return options
+        groups.append(
+            {
+                "id": cat.id,
+                "name": cat.name,
+                "children": [{"id": c.id, "name": c.name} for c in children],
+            }
+        )
+    return groups
 
 
 def _suggested_category_id(session: Session, txn: Transaction) -> Optional[int]:
@@ -119,7 +124,7 @@ def _render_row_html(session: Session, txn: Transaction, oob: bool) -> str:
     accounts_by_id, categories_by_id = _lookup_dicts(session)
     row = _build_row(session, txn, accounts_by_id, categories_by_id)
     template = templates.env.get_template("transactions/_row.html")
-    return template.render(row=row, category_options=_category_options(session), oob=oob)
+    return template.render(row=row, category_groups=_category_groups(session), oob=oob)
 
 
 @router.get("", response_class=HTMLResponse)
@@ -147,7 +152,7 @@ def list_transactions(
             "title": "Buchungen",
             "active_nav": "transactions",
             "rows": rows,
-            "category_options": _category_options(session),
+            "category_groups": _category_groups(session),
             "uncategorized_only": uncategorized,
             "hide_transfers": hide_transfers,
             "toggle_uncategorized_url": _toggle_url(uncategorized, hide_transfers, "uncategorized"),

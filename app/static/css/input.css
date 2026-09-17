@@ -82,4 +82,68 @@
     @apply rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700
       dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-400;
   }
+
+  /* Sortierbare Tabellenspalten (List.js togglet .asc/.desc direkt auf th.sort-th) */
+  .sort-th {
+    @apply cursor-pointer select-none whitespace-nowrap hover:text-gray-700 dark:hover:text-gray-300;
+  }
+
+  .sort-th .icon-unsorted {
+    @apply opacity-40;
+  }
+
+  .sort-th .icon-asc,
+  .sort-th .icon-desc {
+    @apply hidden;
+  }
+
+  .sort-th.asc .icon-asc {
+    @apply inline;
+  }
+
+  .sort-th.asc .icon-unsorted,
+  .sort-th.asc .icon-desc {
+    @apply hidden;
+  }
+
+  .sort-th.desc .icon-desc {
+    @apply inline;
+  }
+
+  .sort-th.desc .icon-unsorted,
+  .sort-th.desc .icon-asc {
+    @apply hidden;
+  }
+
+  /* Tom Select - an unser Formularfeld-Design angeglichen (Basis-CSS von tom-select.css) */
+  .ts-wrapper .ts-control {
+    @apply rounded-lg border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900
+      dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100;
+  }
+
+  .ts-wrapper.focus .ts-control {
+    @apply border-accent shadow-none ring-2 ring-accent/30;
+  }
+
+  .ts-dropdown {
+    @apply rounded-lg border-gray-300 bg-white text-sm shadow-lg dark:border-gray-700
+      dark:bg-gray-900;
+  }
+
+  .ts-dropdown .optgroup-header {
+    @apply bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-500
+      dark:bg-gray-800 dark:text-gray-400;
+  }
+
+  .ts-dropdown [data-selectable].option {
+    @apply text-gray-700 dark:text-gray-200;
+  }
+
+  .ts-dropdown .option.active {
+    @apply bg-accent/10 text-accent;
+  }
+
+  .ts-wrapper .ts-control input {
+    @apply dark:text-gray-100;
+  }
 }

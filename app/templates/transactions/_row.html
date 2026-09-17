@@ -1,16 +1,17 @@
 <tr id="transaction-row-{{ row.txn.id }}" {% if oob %}hx-swap-oob="true"{% endif %}>
-  <td class="whitespace-nowrap font-mono text-xs">{{ row.txn.booking_date.isoformat() }}</td>
-  <td class="whitespace-nowrap text-xs">{{ row.account.display_name if row.account else "–" }}</td>
-  <td class="font-medium text-gray-900 dark:text-gray-100">{{ row.txn.payee }}</td>
-  <td class="max-w-xs truncate text-xs text-gray-500 dark:text-gray-400" title="{{ row.txn.purpose or '' }}">
+  <td class="date whitespace-nowrap font-mono text-xs">{{ row.txn.booking_date.isoformat() }}</td>
+  <td class="account whitespace-nowrap text-xs">{{ row.account.display_name if row.account else "–" }}</td>
+  <td class="payee font-medium text-gray-900 dark:text-gray-100">{{ row.txn.payee }}</td>
+  <td class="purpose max-w-xs truncate text-xs text-gray-500 dark:text-gray-400" title="{{ row.txn.purpose or '' }}">
     {{ row.txn.purpose or "–" }}
   </td>
-  <td class="whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if row.txn.amount > 0 else '' }}">
+  <td class="amount whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if row.txn.amount > 0 else '' }}">
     {{ "%.2f"|format(row.txn.amount) }}
   </td>
   <td class="min-w-[12rem]">
     <select
       name="category_id"
+      data-searchable
       class="form-input !py-1.5 !text-xs"
       hx-post="/transactions/{{ row.txn.id }}/category"
       hx-trigger="change"
@@ -18,10 +19,17 @@
       hx-swap="outerHTML"
     >
       <option value="" {% if not row.txn.category_id %}selected{% endif %}>– keine –</option>
-      {% for opt in category_options %}
-      <option value="{{ opt.id }}" {% if row.txn.category_id == opt.id %}selected{% endif %}>
-        {{ "— " if opt.indent else "" }}{{ opt.label }}
-      </option>
+      {% for group in category_groups %}
+        {% if group.children %}
+        <optgroup label="{{ group.name }}">
+          <option value="{{ group.id }}" {% if row.txn.category_id == group.id %}selected{% endif %}>{{ group.name }} (allgemein)</option>
+          {% for child in group.children %}
+          <option value="{{ child.id }}" {% if row.txn.category_id == child.id %}selected{% endif %}>{{ child.name }}</option>
+          {% endfor %}
+        </optgroup>
+        {% else %}
+        <option value="{{ group.id }}" {% if row.txn.category_id == group.id %}selected{% endif %}>{{ group.name }}</option>
+        {% endif %}
       {% endfor %}
     </select>
     {% if row.suggested_category %}

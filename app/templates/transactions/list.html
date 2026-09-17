@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_table.html" import table_search, sort_th %}
 
 {% block content %}
 <div class="card">
@@ -20,26 +21,34 @@
   </div>
 
   {% if rows %}
-  <div class="mt-5 overflow-x-auto">
-    <table class="table-base">
-      <thead>
-        <tr>
-          <th>Datum</th>
-          <th>Konto</th>
-          <th>Auftraggeber/Empfänger</th>
-          <th>Verwendungszweck</th>
-          <th class="text-right">Betrag</th>
-          <th>Kategorie</th>
-          <th>Umbuchung</th>
-        </tr>
-      </thead>
-      <tbody id="transaction-rows">
-        {% for row in rows %}
-        {% include "transactions/_row.html" %}
-        {% endfor %}
-      </tbody>
-    </table>
+  <div id="transactions-table" class="mt-5">
+    <div class="mb-3">
+      {{ table_search("Buchungen durchsuchen…") }}
+    </div>
+    <div class="overflow-x-auto">
+      <table class="table-base">
+        <thead>
+          <tr>
+            {{ sort_th("Datum", "date") }}
+            {{ sort_th("Konto", "account") }}
+            {{ sort_th("Auftraggeber/Empfänger", "payee") }}
+            {{ sort_th("Verwendungszweck", "purpose") }}
+            {{ sort_th("Betrag", "amount", "text-right") }}
+            <th>Kategorie</th>
+            <th>Umbuchung</th>
+          </tr>
+        </thead>
+        <tbody class="list" id="transaction-rows">
+          {% for row in rows %}
+          {% include "transactions/_row.html" %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
+  <script>
+    hafinInitTable("transactions-table", ["date", "account", "payee", "purpose", "amount"]);
+  </script>
   {% else %}
   <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">
     {{ "Keine unkategorisierten Buchungen." if uncategorized_only else "Noch keine Buchungen importiert." }}

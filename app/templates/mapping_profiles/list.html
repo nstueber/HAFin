@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import pencil, trash, upload %}
+{% from "_table.html" import table_search, sort_th %}
 
 {% block content %}
 <div class="card">
@@ -19,27 +20,31 @@
   </div>
 
   {% if profiles %}
-  <div class="mt-6 overflow-x-auto">
+  <div id="profiles-table" class="mt-6">
+    <div class="mb-3">
+      {{ table_search("Profile durchsuchen…") }}
+    </div>
+    <div class="overflow-x-auto">
     <table class="table-base">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Trennzeichen</th>
-          <th>Dezimal</th>
-          <th>Encoding</th>
-          <th>Datumsformat</th>
+          {{ sort_th("Name", "name") }}
+          {{ sort_th("Trennzeichen", "delimiter") }}
+          {{ sort_th("Dezimal", "decimal") }}
+          {{ sort_th("Encoding", "encoding") }}
+          {{ sort_th("Datumsformat", "date_format") }}
           <th>Spalten (Datum / Name / Zweck / Betrag)</th>
           <th></th>
         </tr>
       </thead>
-      <tbody id="profile-rows">
+      <tbody class="list" id="profile-rows">
         {% for profile in profiles %}
         <tr id="profile-row-{{ profile.id }}">
-          <td class="font-medium text-gray-900 dark:text-gray-100">{{ profile.name }}</td>
-          <td><code class="rounded bg-gray-100 px-1.5 py-0.5 text-xs dark:bg-gray-800">{{ profile.delimiter }}</code></td>
-          <td><code class="rounded bg-gray-100 px-1.5 py-0.5 text-xs dark:bg-gray-800">{{ profile.decimal_separator }}</code></td>
-          <td>{{ profile.encoding }}</td>
-          <td><code class="rounded bg-gray-100 px-1.5 py-0.5 text-xs dark:bg-gray-800">{{ profile.date_format }}</code></td>
+          <td class="name font-medium text-gray-900 dark:text-gray-100">{{ profile.name }}</td>
+          <td class="delimiter"><code class="rounded bg-gray-100 px-1.5 py-0.5 text-xs dark:bg-gray-800">{{ profile.delimiter }}</code></td>
+          <td class="decimal"><code class="rounded bg-gray-100 px-1.5 py-0.5 text-xs dark:bg-gray-800">{{ profile.decimal_separator }}</code></td>
+          <td class="encoding">{{ profile.encoding }}</td>
+          <td class="date_format"><code class="rounded bg-gray-100 px-1.5 py-0.5 text-xs dark:bg-gray-800">{{ profile.date_format }}</code></td>
           <td class="text-xs text-gray-500 dark:text-gray-400">
             {{ profile.date_column }} / {{ profile.payee_column }} /
             {{ profile.purpose_column }} / {{ profile.amount_column }}
@@ -66,7 +71,11 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
+  <script>
+    hafinInitTable("profiles-table", ["name", "delimiter", "decimal", "encoding", "date_format"]);
+  </script>
   {% else %}
   <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">Noch keine Mapping-Profile angelegt.</p>
   {% endif %}

@@ -104,7 +104,7 @@ async def run_import(
     )
 
     imported = 0
-    duplicates = 0
+    duplicates: list[dict] = []
     errors: list[dict] = []
 
     for index, parsed in enumerate(parsed_rows, start=1):
@@ -122,7 +122,17 @@ async def run_import(
             )
         ).first()
         if existing:
-            duplicates += 1
+            duplicates.append(
+                {
+                    "row": index,
+                    "booking_date": parsed.booking_date,
+                    "payee": parsed.payee,
+                    "purpose": parsed.purpose,
+                    "amount": parsed.amount,
+                    "existing_transaction_id": existing.id,
+                    "existing_created_at": existing.created_at,
+                }
+            )
             continue
 
         transaction_type = TransactionType.EINGANG if parsed.amount > 0 else TransactionType.AUSGANG

@@ -1,0 +1,19 @@
+{% macro table_search(placeholder="Suchen…", extra_classes="") %}
+<input
+  type="search"
+  class="search form-input max-w-xs {{ extra_classes }}"
+  placeholder="{{ placeholder }}"
+  aria-label="{{ placeholder }}"
+/>
+{% endmacro %}
+
+{% macro sort_th(label, sort_key, extra_classes="") %}
+<th class="sort sort-th {{ extra_classes }}" data-sort="{{ sort_key }}">
+  <span class="inline-flex items-center gap-1">
+    <span>{{ label }}</span>
+    <span class="icon-unsorted text-[0.65rem]">↕</span>
+    <span class="icon-asc text-[0.65rem] text-accent">↑</span>
+    <span class="icon-desc text-[0.65rem] text-accent">↓</span>
+  </span>
+</th>
+{% endmacro %}
