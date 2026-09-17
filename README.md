@@ -33,6 +33,7 @@ App: http://localhost:8000
 ```
 app/
   models/       SQLModel-Datenmodelle (Konten, Kategorien, Mapping-Profile, Transaktionen)
+  services/     CSV-Erkennungslogik (Encoding, Trennzeichen, Dezimaltrennzeichen, Datumsformat)
   templates/    Jinja2-Templates
   static/       JS (htmx, Theme-Toggle); Styling kommt von Beer CSS per CDN
   database.py   DB-Engine & Session
@@ -43,6 +44,18 @@ app/
 
 SQLite-Datei, Pfad über Umgebungsvariable `DATABASE_PATH` konfigurierbar
 (Standard: `/data/haushaltsbuch.db`, passend für den Docker-Container).
+
+## Mapping-Profil aus Beispiel-CSV anlegen
+
+Beim Anlegen eines neuen Mapping-Profils wird zunächst eine Beispiel-CSV
+hochgeladen. Zeichenkodierung (`charset-normalizer`), Trennzeichen
+(`csv.Sniffer`), Dezimaltrennzeichen und Datumsformat werden daraus
+automatisch erkannt und vorbefüllt (weiterhin manuell änderbar), die
+Spalten-Zuordnung erfolgt per Dropdown aus der erkannten Kopfzeile, mit
+Live-Vorschau der ersten Zeilen. Die hochgeladene Datei liegt bis zum
+Speichern des Profils unter `<DATA_DIR>/tmp_mapping_uploads/` und wird danach
+gelöscht (verwaiste Uploads werden zusätzlich beim App-Start nach 6 Stunden
+automatisch aufgeräumt).
 
 ## Hinweis: Internetzugriff im Browser
 

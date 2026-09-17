@@ -1,0 +1,86 @@
+<div class="grid">
+  <div class="s12 m6 l3">
+    <div class="field label border">
+      <select name="delimiter" class="active">
+        <option value="," {% if delimiter == ',' %}selected{% endif %}>Komma (,)</option>
+        <option value=";" {% if delimiter == ';' %}selected{% endif %}>Semikolon (;)</option>
+        <option value="&#9;" {% if delimiter == '\t' %}selected{% endif %}>Tab</option>
+      </select>
+      <label class="active">Trennzeichen</label>
+    </div>
+  </div>
+  <div class="s12 m6 l3">
+    <div class="field label border">
+      <select name="decimal_separator" class="active">
+        <option value="." {% if decimal_separator == '.' %}selected{% endif %}>Punkt (.)</option>
+        <option value="," {% if decimal_separator == ',' %}selected{% endif %}>Komma (,)</option>
+      </select>
+      <label class="active">Dezimaltrennzeichen</label>
+    </div>
+  </div>
+  <div class="s12 m6 l3">
+    <div class="field label border">
+      <select name="encoding" class="active">
+        <option value="utf-8" {% if encoding == 'utf-8' %}selected{% endif %}>UTF-8</option>
+        <option value="windows-1252" {% if encoding == 'windows-1252' %}selected{% endif %}>Windows-1252</option>
+        <option value="iso-8859-1" {% if encoding == 'iso-8859-1' %}selected{% endif %}>ISO-8859-1</option>
+      </select>
+      <label class="active">Zeichenkodierung</label>
+    </div>
+  </div>
+  <div class="s12 m6 l3">
+    <div class="field label border">
+      <input type="text" name="date_format" required placeholder=" " value="{{ date_format }}" />
+      <label>Datumsformat</label>
+    </div>
+  </div>
+</div>
+
+{% if parse_error %}
+<div class="error round padding">{{ parse_error }}</div>
+{% else %}
+
+<p>Spalten-Zuordnung (Kopfzeile der Beispiel-CSV):</p>
+<div class="grid">
+  {% for field_key in mapping_fields %}
+  <div class="s12 m6 l3">
+    <div class="field label border">
+      <select name="{{ field_key }}" class="active">
+        <option value="" {% if not mapping[field_key] %}selected{% endif %}>–</option>
+        {% for col in header %}
+        <option value="{{ col }}" {% if mapping[field_key] == col %}selected{% endif %}>{{ col }}</option>
+        {% endfor %}
+      </select>
+      <label class="active">{{ mapping_labels[field_key] }}</label>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<p>Vorschau (erste {{ preview_rows|length }} Zeile{{ 'n' if preview_rows|length != 1 else '' }}):</p>
+<table class="border">
+  <thead>
+    <tr>
+      <th>Buchungsdatum</th>
+      <th>Auftraggeber/Empfänger</th>
+      <th>Verwendungszweck</th>
+      <th>Betrag</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in preview_rows %}
+    <tr>
+      <td>{{ row.booking_date }}{% if not row.booking_date_ok %} <i class="tiny error-text">warning</i>{% endif %}</td>
+      <td>{{ row.payee }}</td>
+      <td>{{ row.purpose }}</td>
+      <td>{{ row.amount }}{% if not row.amount_ok %} <i class="tiny error-text">warning</i>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    {% if not preview_rows %}
+    <tr>
+      <td colspan="4">Keine Beispieldaten in der CSV gefunden.</td>
+    </tr>
+    {% endif %}
+  </tbody>
+</table>
+{% endif %}

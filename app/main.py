@@ -22,6 +22,7 @@ app.include_router(mapping_profiles.router)
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    mapping_profiles.cleanup_stale_uploads()
 
 
 @app.get("/health")

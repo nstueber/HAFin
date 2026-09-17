@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<article>
+  <h5>Neues Mapping-Profil: Beispiel-CSV hochladen</h5>
+  <p>
+    Lade eine Beispiel-CSV der Bank hoch, für die dieses Profil gelten soll.
+    Trennzeichen, Zeichenkodierung, Dezimaltrennzeichen und Datumsformat werden
+    daraus automatisch erkannt und lassen sich im nächsten Schritt noch prüfen
+    und anpassen. Die Datei wird nur für die Dauer der Profil-Erstellung
+    zwischengehalten und danach verworfen.
+  </p>
+  {% if form_error %}
+  <div class="error round padding">{{ form_error }}</div>
+  {% endif %}
+  <form method="post" action="/mapping-profiles/new" enctype="multipart/form-data">
+    <div class="field label border">
+      <input type="text" name="name" required placeholder=" " value="{{ name or '' }}" />
+      <label>Profilname</label>
+    </div>
+
+    <p>Beispiel-CSV</p>
+    <input type="file" name="csv_file" accept=".csv,text/csv" required />
+
+    <nav>
+      <button type="submit">Weiter</button>
+      <a href="/mapping-profiles">Abbrechen</a>
+    </nav>
+  </form>
+</article>
+{% endblock %}

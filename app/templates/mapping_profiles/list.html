@@ -8,6 +8,12 @@
     Dezimaltrennzeichen, Zeichenkodierung, Datumsformat) und welche Spalten
     welchen Feldern entsprechen. Profile sind wiederverwendbar, z.B. eines pro Bank.
   </p>
+  <form method="get" action="/mapping-profiles/new">
+    <button type="submit">
+      <i>upload_file</i>
+      <span>Neues Profil anlegen</span>
+    </button>
+  </form>
   {% if profiles %}
   <table class="border">
     <thead>
@@ -55,17 +61,5 @@
   {% else %}
   <p>Noch keine Mapping-Profile angelegt.</p>
   {% endif %}
-</article>
-
-<article>
-  <h5>Neues Mapping-Profil anlegen</h5>
-  {% if form_error %}
-  <div class="error round padding">{{ form_error }}</div>
-  {% endif %}
-  {% set values = form_data %}
-  {% set action_url = "/mapping-profiles" %}
-  {% set submit_label = "Profil anlegen" %}
-  {% set cancel_url = None %}
-  {% include "mapping_profiles/_fields.html" %}
 </article>
 {% endblock %}

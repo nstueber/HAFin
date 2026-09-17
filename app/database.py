@@ -5,7 +5,8 @@ from typing import Iterator
 from sqlmodel import Session, SQLModel, create_engine
 
 DATABASE_PATH = os.environ.get("DATABASE_PATH", "/data/haushaltsbuch.db")
-Path(DATABASE_PATH).parent.mkdir(parents=True, exist_ok=True)
+DATA_DIR = Path(DATABASE_PATH).parent
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 engine = create_engine(
     f"sqlite:///{DATABASE_PATH}",

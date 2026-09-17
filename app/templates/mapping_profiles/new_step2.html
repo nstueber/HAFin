@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block content %}
+<article>
+  <h5>Neues Mapping-Profil: Einstellungen prüfen</h5>
+  <p>
+    Automatisch erkannte Einstellungen unten prüfen und bei Bedarf anpassen.
+    Die Vorschau aktualisiert sich automatisch, sobald du etwas änderst.
+  </p>
+  {% if form_error %}
+  <div class="error round padding">{{ form_error }}</div>
+  {% endif %}
+  <form
+    id="profile-form"
+    method="post"
+    action="/mapping-profiles"
+    hx-post="/mapping-profiles/new/preview"
+    hx-trigger="change"
+    hx-target="#step2-dynamic"
+    hx-swap="innerHTML"
+  >
+    <input type="hidden" name="upload_id" value="{{ upload_id }}" />
+
+    <div class="field label border">
+      <input type="text" name="name" required placeholder=" " value="{{ name }}" />
+      <label>Profilname</label>
+    </div>
+
+    <div id="step2-dynamic">
+      {% include "mapping_profiles/_step2_dynamic.html" %}
+    </div>
+
+    <nav>
+      <button type="submit">Profil speichern</button>
+      <a href="/mapping-profiles">Abbrechen</a>
+    </nav>
+  </form>
+</article>
+{% endblock %}

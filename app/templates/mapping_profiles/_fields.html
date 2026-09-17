@@ -11,6 +11,7 @@
         <select name="delimiter" class="active">
           <option value="," {% if values.delimiter == ',' or not values.delimiter %}selected{% endif %}>Komma (,)</option>
           <option value=";" {% if values.delimiter == ';' %}selected{% endif %}>Semikolon (;)</option>
+          <option value="&#9;" {% if values.delimiter == '\t' %}selected{% endif %}>Tab</option>
         </select>
         <label class="active">Trennzeichen</label>
       </div>
@@ -28,6 +29,7 @@
       <div class="field label border">
         <select name="encoding" class="active">
           <option value="utf-8" {% if values.encoding == 'utf-8' or not values.encoding %}selected{% endif %}>UTF-8</option>
+          <option value="windows-1252" {% if values.encoding == 'windows-1252' %}selected{% endif %}>Windows-1252</option>
           <option value="iso-8859-1" {% if values.encoding == 'iso-8859-1' %}selected{% endif %}>ISO-8859-1</option>
         </select>
         <label class="active">Zeichenkodierung</label>
