@@ -284,3 +284,17 @@ Buchungsliste sowie die Konto-/Mapping-Profil-Auswahl beim CSV-Import; für
 neue Selects reicht das Attribut `data-searchable`, kein weiterer JS-Code
 nötig. Styling-Overrides für Tom Select liegen in `input.css` unter
 `.ts-wrapper`/`.ts-control`/`.ts-dropdown`.
+
+**Wichtig für den `htmx:afterSwap`-Listener in `enhancements.js`:** er wird auf
+`document`, nicht auf `document.body`, registriert. `enhancements.js` wird als
+normales `<script>` im `<head>` geladen und läuft synchron beim Parsen, bevor
+`<body>` überhaupt existiert - ein `document.body.addEventListener(...)` an
+dieser Stelle würde sofort mit `Cannot read properties of null` fehlschlagen
+und der Listener würde nie registriert. Das führte real dazu, dass nach jedem
+htmx-Swap (Kategorie ändern, Umbuchung bestätigen/lösen, Vorschlag
+verwerfen, …) frisch eingefügte `<select data-searchable>`-Felder nie erneut
+zu Tom Select konvertiert wurden - sichtbar als natives, unindiziertes
+`<select>` mit doppeltem Rahmen, bis zum nächsten vollständigen Seiten-Reload.
+`document` existiert dagegen von Anfang an, und htmx-Events blubbern ohnehin
+bis dorthin - kein weiterer Unterschied im Verhalten, nur die Registrierung
+funktioniert jetzt zuverlässig.

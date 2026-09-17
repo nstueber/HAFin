@@ -33,7 +33,10 @@
   // htmx tauscht Zeilen per outerHTML aus (z.B. Kategorie-Zuordnung, Umbuchungs-
   // Bestätigung) - danach müssen sowohl List.js (Sortier-/Suchindex) als auch
   // Tom Select (frisch eingefügte <select>-Elemente) neu synchronisiert werden.
-  document.body.addEventListener("htmx:afterSwap", function () {
+  // Listener bewusst auf "document" statt "document.body": dieses Skript wird im
+  // <head> geladen und läuft synchron, bevor <body> existiert - "document" ist
+  // dagegen immer vorhanden, und htmx-Events blubbern ohnehin bis dorthin.
+  document.addEventListener("htmx:afterSwap", function () {
     reindexAllTables();
     initSearchableSelects();
   });
