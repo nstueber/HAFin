@@ -132,12 +132,20 @@ identischem Betrag und Auftraggeber/Empfänger kategorisiert wurde - ein Klick
 
 Jede Buchung ohne Verknüpfung wird gegen alle anderen noch unverknüpften
 Buchungen auf *anderen* Konten geprüft: exakt gegenteiliger Betrag,
-Buchungsdatum innerhalb von ±2 Tagen. Passende Kandidaten werden in der
-Buchungen-Liste als "Treffer" mit Konto/Datum/Auftraggeber angezeigt - ein
-Klick auf "Als Umbuchung bestätigen" verknüpft beide Seiten (setzt
+Buchungsdatum innerhalb von ±2 Tagen. Passende Kandidaten werden an zwei
+Stellen angezeigt:
+- **"Umbuchungs-Vorschläge"**-Karte ganz oben auf der Buchungen-Seite: eine
+  kontoübergreifende, deduplizierte Liste aller offenen Treffer (unabhängig
+  von der 200-Zeilen-Begrenzung der Hauptliste darunter, damit ein Treffer
+  nicht übersehen wird, nur weil eine Seite außerhalb der neuesten 200
+  Buchungen liegt)
+- direkt in der jeweiligen Tabellenzeile (Spalte "Umbuchung") als "Treffer"
+  mit Konto/Datum/Auftraggeber
+
+Ein Klick auf "Als Umbuchung bestätigen" verknüpft beide Seiten (setzt
 `counter_transaction_id` gegenseitig und den Typ auf `umbuchung`) und
-aktualisiert beide betroffenen Zeilen in der Liste per htmx-Out-of-Band-Swap
-(auch wenn die Gegenbuchung in einer anderen Tabellenzeile steht). Es wird nie
+aktualisiert die betroffene(n) Zeile(n) per htmx-Out-of-Band-Swap, egal ob von
+der Vorschläge-Karte oder direkt aus der Tabelle bestätigt. Es wird nie
 automatisch verknüpft, nur vorgeschlagen.
 
 Eine Buchung kann auch ohne bekannte Gegenbuchung manuell als Umbuchung
@@ -146,13 +154,25 @@ wurde) - sie bleibt dann unverknüpft, taucht aber weiterhin in der
 Kandidatensuche auf. Wird später die passende Gegenbuchung importiert, wird
 der Treffer vorgeschlagen; war die bestehende Seite bereits manuell markiert,
 ist das in der Kandidatenliste mit "(markiert)" gekennzeichnet und
-entsprechend priorisiert. Sowohl die manuelle Markierung als auch eine
-bestätigte Verknüpfung lassen sich wieder aufheben (Typ fällt dann auf
-Eingang/Ausgang anhand des Vorzeichens zurück).
+entsprechend priorisiert.
 
-Bestätigte Umbuchungen bleiben in der Buchungsliste sichtbar, lassen sich dort
-aber über den Filter "Umbuchungen ausblenden" ausblenden (kombinierbar mit
-"nur unkategorisierte anzeigen").
+Zusätzlich lässt sich jede unverknüpfte Buchung auch **manuell** mit einer
+bestimmten Gegenbuchung verknüpfen ("Verknüpfen mit…"): eine durchsuchbare
+Tom-Select-Auswahl (dieselbe Komponente wie bei der Kategorie-Auswahl) zeigt
+alle unverknüpften Buchungen anderer Konten, gruppiert in "Exakt
+entgegengesetzter Betrag" (nach zeitlicher Nähe sortiert) und "Andere
+Kandidaten" (ebenfalls nach zeitlicher Nähe sortiert, auf 50 begrenzt) - für
+Fälle außerhalb des automatischen ±2-Tage-Fensters oder wenn die
+Auto-Erkennung aus anderen Gründen nichts findet.
+
+Sowohl die manuelle Markierung als auch eine bestätigte Verknüpfung (ob
+automatisch vorgeschlagen oder manuell hergestellt) lassen sich wieder
+aufheben (Typ fällt dann auf Eingang/Ausgang anhand des Vorzeichens zurück).
+
+Der Filter in der Buchungsliste hat drei Zustände (kein unabhängiger
+zweiter Button mehr, um widersprüchliche Kombinationen zu vermeiden):
+"Alle" (Standard), "Nur Umbuchungen", "Ohne Umbuchungen" - kombinierbar mit
+"nur unkategorisierte anzeigen".
 
 ## IBAN-Anzeige
 

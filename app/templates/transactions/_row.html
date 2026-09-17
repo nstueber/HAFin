@@ -105,6 +105,17 @@
         Als Umbuchung markieren
       </button>
       {% endif %}
+
+      <button
+        type="button"
+        class="mt-1 block text-gray-500 hover:underline dark:text-gray-400"
+        hx-get="/transactions/{{ row.txn.id }}/link-form"
+        hx-target="#link-area-{{ row.txn.id }}"
+        hx-swap="innerHTML"
+      >
+        Verknüpfen mit…
+      </button>
+      <div id="link-area-{{ row.txn.id }}"></div>
     {% endif %}
   </td>
 </tr>

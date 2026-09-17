@@ -1,0 +1,41 @@
+<form
+  hx-post="/transactions/{{ txn.id }}/confirm-transfer"
+  hx-target="#transaction-row-{{ txn.id }}"
+  hx-swap="outerHTML"
+  class="mt-1 flex flex-wrap items-center gap-2"
+>
+  <select name="counter_transaction_id" data-searchable required class="form-input !py-1.5 !text-xs">
+    <option value="" disabled selected>– Gegenbuchung wählen –</option>
+    {% if exact %}
+    <optgroup label="Exakt entgegengesetzter Betrag">
+      {% for c in exact %}
+      <option value="{{ c.id }}">
+        {{ accounts_by_id[c.account_id].display_name if c.account_id in accounts_by_id else "–" }} ·
+        {{ c.booking_date.isoformat() }} · {{ c.payee }} · {{ "%.2f"|format(c.amount) }}
+      </option>
+      {% endfor %}
+    </optgroup>
+    {% endif %}
+    {% if others %}
+    <optgroup label="Andere Kandidaten">
+      {% for c in others %}
+      <option value="{{ c.id }}">
+        {{ accounts_by_id[c.account_id].display_name if c.account_id in accounts_by_id else "–" }} ·
+        {{ c.booking_date.isoformat() }} · {{ c.payee }} · {{ "%.2f"|format(c.amount) }}
+      </option>
+      {% endfor %}
+    </optgroup>
+    {% endif %}
+    {% if not exact and not others %}
+    <option value="" disabled>Keine anderen unverknüpften Buchungen vorhanden</option>
+    {% endif %}
+  </select>
+  <button type="submit" class="btn-outline !px-3 !py-1.5 !text-xs">Verknüpfen</button>
+  <button
+    type="button"
+    class="text-xs text-gray-500 hover:underline dark:text-gray-400"
+    onclick="document.getElementById('link-area-{{ txn.id }}').innerHTML = ''"
+  >
+    Abbrechen
+  </button>
+</form>
