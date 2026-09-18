@@ -3,7 +3,7 @@
 <h3 class="text-base font-semibold">Bargeld aufteilen</h3>
 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
   {{ txn.booking_date.isoformat() }} · {{ txn.payee }} ·
-  Betrag: <span class="font-mono">{{ "%.2f"|format(txn.amount) }}</span>
+  Betrag: <span class="font-mono">{{ txn.amount|format_currency }}</span>
 </p>
 
 {% if form_error %}
@@ -56,7 +56,7 @@
       class="font-mono font-semibold {{ 'text-red-600 dark:text-red-400' if remaining_magnitude < 0 else '' }}"
       data-original="{{ original_magnitude }}"
     >
-      {{ "%.2f"|format(remaining_magnitude) }}
+      {{ remaining_magnitude|format_currency }}
     </span>
   </div>
 
@@ -103,7 +103,7 @@
         if (!isNaN(v)) sum += Math.abs(v);
       });
       var remaining = originalMagnitude - sum;
-      remainingEl.textContent = remaining.toFixed(2);
+      remainingEl.textContent = window.hafinFormatCurrency(remaining);
       remainingEl.classList.toggle("text-red-600", remaining < 0);
       remainingEl.classList.toggle("dark:text-red-400", remaining < 0);
     }

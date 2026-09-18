@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -161,7 +161,7 @@ def _pending_transfer_suggestions(
     Buchungen liegt.
     """
     unlinked = session.exec(
-        select(Transaction).where(Transaction.counter_transaction_id.is_(None))
+        select(Transaction).where(Transaction.counter_transaction_id.is_(None)).order_by(Transaction.id)
     ).all()
     seen_pairs: set = set()
     suggestions = []
@@ -171,12 +171,18 @@ def _pending_transfer_suggestions(
             if pair_key in seen_pairs:
                 continue
             seen_pairs.add(pair_key)
+            # a/b immer nach ID sortiert, unabhaengig davon, von welcher Seite die
+            # Erkennung ausgeloest wurde - macht die Vorschlags-ID ("suggestion-X-Y")
+            # deterministisch, damit spaetere OOB-Updates (z.B. Bestaetigung ueber
+            # die Tabellenzeile statt ueber diese Karte) dieselbe Karte zuverlaessig
+            # per ID treffen und nicht zwei Varianten derselben Kombination entstehen.
+            first, second = (txn, cand) if txn.id < cand.id else (cand, txn)
             suggestions.append(
                 {
-                    "a": txn,
-                    "a_account": accounts_by_id.get(txn.account_id),
-                    "b": cand,
-                    "b_account": accounts_by_id.get(cand.account_id),
+                    "a": first,
+                    "a_account": accounts_by_id.get(first.account_id),
+                    "b": second,
+                    "b_account": accounts_by_id.get(second.account_id),
                 }
             )
     return suggestions
@@ -245,12 +251,16 @@ def _reject_suggestion(session: Session, transaction_id: int, counter_transactio
         session.commit()
 
 
-def _filter_url(uncategorized: bool, transfers: str) -> str:
+def _filter_url(uncategorized: bool, transfers: str, date_from: str = "", date_to: str = "") -> str:
     params = []
     if uncategorized:
         params.append("uncategorized=1")
     if transfers != "all":
         params.append(f"transfers={transfers}")
+    if date_from:
+        params.append(f"date_from={date_from}")
+    if date_to:
+        params.append(f"date_to={date_to}")
     return "/transactions" + ("?" + "&".join(params) if params else "")
 
 
@@ -315,28 +325,67 @@ def _render_row_html(session: Session, txn: Transaction, oob: bool) -> str:
     return template.render(row=row, category_groups=_category_groups(session), oob=oob)
 
 
-def _apply_transaction_filters(query, uncategorized: bool, transfers: str):
+def _parse_date(value: str):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _apply_transaction_filters(
+    query,
+    uncategorized: bool,
+    transfers: str,
+    date_from: str = "",
+    date_to: str = "",
+):
     if uncategorized:
         query = query.where(Transaction.category_id.is_(None))
     if transfers == "hide":
         query = query.where(Transaction.transaction_type != TransactionType.UMBUCHUNG)
     elif transfers == "only":
         query = query.where(Transaction.transaction_type == TransactionType.UMBUCHUNG)
+    from_date = _parse_date(date_from)
+    to_date = _parse_date(date_to)
+    if from_date is not None:
+        query = query.where(Transaction.booking_date >= from_date)
+    if to_date is not None:
+        query = query.where(Transaction.booking_date <= to_date)
     return query
 
 
-def _filtered_query(uncategorized: bool, transfers: str):
-    return _apply_transaction_filters(select(Transaction), uncategorized, transfers)
+def _filtered_query(uncategorized: bool, transfers: str, date_from: str = "", date_to: str = ""):
+    return _apply_transaction_filters(select(Transaction), uncategorized, transfers, date_from, date_to)
 
 
-def _count_transactions(session: Session, uncategorized: bool, transfers: str) -> int:
+def _count_transactions(
+    session: Session, uncategorized: bool, transfers: str, date_from: str = "", date_to: str = ""
+) -> int:
     # select(func.count()).select_from(...) statt select(Transaction).with_only_columns(...):
     # Letzteres verliert beim Spaltenaustausch die implizite FROM-Klausel (ergibt
     # "SELECT count(*)" ganz ohne "FROM transaction" und damit ein falsches Ergebnis).
     query = _apply_transaction_filters(
-        select(func.count()).select_from(Transaction), uncategorized, transfers
+        select(func.count()).select_from(Transaction), uncategorized, transfers, date_from, date_to
     )
     return session.exec(query).one()
+
+
+def _category_display_name(category_id: Optional[int], categories_by_id: dict) -> str:
+    """Voller Kategorie-Name inkl. Oberkategorie fuer die Suche, z.B. "Auto Ladekosten" -
+    damit eine Suche nach der Oberkategorie auch Buchungen findet, deren Unterkategorie
+    zugewiesen ist, und umgekehrt eine Suche nach der Unterkategorie ebenfalls greift."""
+    if category_id is None:
+        return ""
+    cat = categories_by_id.get(category_id)
+    if cat is None:
+        return ""
+    if cat.parent_id is not None:
+        parent = categories_by_id.get(cat.parent_id)
+        if parent is not None:
+            return f"{parent.name} {cat.name}"
+    return cat.name
 
 
 @router.get("", response_class=HTMLResponse)
@@ -344,16 +393,18 @@ def list_transactions(
     request: Request,
     uncategorized: bool = False,
     transfers: str = "all",
+    date_from: str = "",
+    date_to: str = "",
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     if transfers not in ("all", "only", "hide"):
         transfers = "all"
 
-    query = _filtered_query(uncategorized, transfers).order_by(
+    query = _filtered_query(uncategorized, transfers, date_from, date_to).order_by(
         Transaction.booking_date.desc(), Transaction.id.desc()
     ).limit(LIST_LIMIT)
     transactions = session.exec(query).all()
-    total_count = _count_transactions(session, uncategorized, transfers)
+    total_count = _count_transactions(session, uncategorized, transfers, date_from, date_to)
 
     accounts_by_id, categories_by_id = _lookup_dicts(session)
     rejected_pairs = _load_rejected_pairs(session)
@@ -384,10 +435,14 @@ def list_transactions(
             "category_groups": _category_groups(session),
             "uncategorized_only": uncategorized,
             "transfers": transfers,
-            "url_transfers_all": _filter_url(uncategorized, "all"),
-            "url_transfers_only": _filter_url(uncategorized, "only"),
-            "url_transfers_hide": _filter_url(uncategorized, "hide"),
-            "url_uncategorized_toggle": _filter_url(not uncategorized, transfers),
+            "date_from": date_from,
+            "date_to": date_to,
+            "url_transfers_all": _filter_url(uncategorized, "all", date_from, date_to),
+            "url_transfers_only": _filter_url(uncategorized, "only", date_from, date_to),
+            "url_transfers_hide": _filter_url(uncategorized, "hide", date_from, date_to),
+            "url_uncategorized_toggle": _filter_url(not uncategorized, transfers, date_from, date_to),
+            "url_clear_dates": _filter_url(uncategorized, transfers),
+            "search_url": f"/transactions/search-rows?uncategorized={'true' if uncategorized else 'false'}&transfers={transfers}&date_from={date_from}&date_to={date_to}",
             "suggestions": all_suggestions[:SUGGESTIONS_LIMIT],
             "suggestions_total": len(all_suggestions),
             "visible_count": len(rows),
@@ -395,6 +450,92 @@ def list_transactions(
             "limit": LIST_LIMIT,
         },
     )
+
+
+SEARCH_LIMIT = 500
+
+
+@router.get("/search-rows", response_class=HTMLResponse)
+def search_transaction_rows(
+    request: Request,
+    q: str = "",
+    negate: bool = False,
+    uncategorized: bool = False,
+    transfers: str = "all",
+    date_from: str = "",
+    date_to: str = "",
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    """Server-seitige Volltextsuche (inkl. Kategorie-Name) ueber den GESAMTEN
+    zum aktiven Filter passenden Datenbestand - nicht nur ueber die per
+    LIST_LIMIT geladenen Zeilen. Ersetzt bei aktiver Suche den Tabelleninhalt
+    komplett (inkl. aktualisierter "Zeige X von Y"-Trefferzahl); Sortierung
+    bleibt weiterhin client-seitig ueber List.js auf den zurueckgegebenen Zeilen.
+    """
+    if transfers not in ("all", "only", "hide"):
+        transfers = "all"
+
+    query = _filtered_query(uncategorized, transfers, date_from, date_to).order_by(
+        Transaction.booking_date.desc(), Transaction.id.desc()
+    )
+    all_matching = session.exec(query).all()
+
+    accounts_by_id, categories_by_id = _lookup_dicts(session)
+
+    query_lower = q.strip().lower()
+    if query_lower:
+        def _matches(t: Transaction) -> bool:
+            haystack = " ".join(
+                filter(
+                    None,
+                    [
+                        t.payee,
+                        t.purpose,
+                        accounts_by_id[t.account_id].display_name if t.account_id in accounts_by_id else None,
+                        _category_display_name(t.category_id, categories_by_id),
+                    ],
+                )
+            ).lower()
+            found = query_lower in haystack
+            return (not found) if negate else found
+
+        matched = [t for t in all_matching if _matches(t)]
+    else:
+        matched = all_matching
+
+    transactions = matched[:SEARCH_LIMIT]
+
+    rejected_pairs = _load_rejected_pairs(session)
+    bargeld_category_id = _bargeld_category_id(session)
+    splits_by_txn_id = _splits_by_transaction(session, [t.id for t in transactions])
+    category_groups = _category_groups(session)
+    # Bewusst KEINE Mischung aus rohen <tr>-Elementen (das eigentliche innerHTML-
+    # Swap-Ziel #transaction-rows ist ein <tbody>) mit einem zusaetzlichen, anders
+    # benannten Out-of-Band-Element in derselben Antwort - htmx' Fragment-Parsing
+    # dafuer ist fragil und endete hier zuverlaessig in einem htmx:swapError
+    # ("e.querySelectorAll is not a function"). Die "Zeige X von Y"-Trefferzahl
+    # wird stattdessen rein clientseitig aus der Zeilenzahl nach dem Swap
+    # abgeleitet (siehe enhancements.js, hafinInitTable's "updated"-Handler).
+    # Bei 0 Treffern bleibt der <tbody> bewusst leer statt eine Platzhalter-<tr>
+    # zu rendern, damit diese clientseitige Zaehlung exakt bleibt; die "Keine
+    # Treffer"-Meldung wird separat (außerhalb des <tbody>) ein-/ausgeblendet.
+    rows_html = "".join(
+        templates.env.get_template("transactions/_row.html").render(
+            row=_build_row(
+                session,
+                t,
+                accounts_by_id,
+                categories_by_id,
+                rejected_pairs,
+                bargeld_category_id,
+                splits_by_txn_id,
+            ),
+            category_groups=category_groups,
+            oob=False,
+        )
+        for t in transactions
+    )
+    return HTMLResponse(content=rows_html)
 
 
 @router.post("/{transaction_id}/category", response_class=HTMLResponse)
@@ -484,6 +625,11 @@ def link_form(
     )
 
 
+def _suggestion_card_oob_delete(transaction_id: int, counter_transaction_id: int) -> str:
+    a_id, b_id = sorted((transaction_id, counter_transaction_id))
+    return f'<div id="suggestion-{a_id}-{b_id}" hx-swap-oob="delete"></div>'
+
+
 @router.post("/{transaction_id}/confirm-transfer", response_class=HTMLResponse)
 def confirm_transfer(
     request: Request,
@@ -495,6 +641,11 @@ def confirm_transfer(
     html = _render_row_html(session, txn, oob=False)
     if counter is not None:
         html += _render_row_html(session, counter, oob=True)
+    # Falls dasselbe Paar zufällig auch in der globalen Vorschläge-Karte
+    # sichtbar ist (Bestätigung erfolgte hier direkt aus der Tabellenzeile,
+    # nicht über die Karte selbst) - deren Karte ebenfalls entfernen, damit
+    # sie nicht als scheinbar "zweiter" (bereits erledigter) Vorschlag stehen bleibt.
+    html += _suggestion_card_oob_delete(transaction_id, counter_transaction_id)
     return HTMLResponse(content=html)
 
 

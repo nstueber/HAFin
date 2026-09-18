@@ -33,6 +33,15 @@
     @apply mx-auto max-w-4xl;
   }
 
+  /* Fuer Dialoge, die eine mehrspaltige Tabelle zeigen (Duplikate-Liste,
+     Dashboard-Drilldown) statt eines einfachen Formulars - deutlich breiter
+     als .page-narrow/.page-wide, damit Tabellenspalten nicht abgeschnitten
+     werden bzw. horizontal gescrollt werden muss. Einheitliche Klasse statt
+     die Breite pro Dialog einzeln zu setzen. */
+  .modal-wide {
+    @apply mx-auto w-[90vw] max-w-4xl;
+  }
+
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5
       text-sm font-medium text-white transition-colors hover:bg-accent-hover

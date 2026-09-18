@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from sqlmodel import Session, select
@@ -164,3 +166,72 @@ async def run_import(
             "errors": errors,
         },
     )
+
+
+@router.post("/force-import", response_class=HTMLResponse)
+async def force_import_duplicates(
+    request: Request,
+    account_id: int = Form(...),
+    all_row: list[int] = Form(default=[]),
+    all_date: list[str] = Form(default=[]),
+    all_payee: list[str] = Form(default=[]),
+    all_purpose: list[str] = Form(default=[]),
+    all_amount: list[str] = Form(default=[]),
+    selected_rows: list[int] = Form(default=[]),
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    """Importiert vom Nutzer ausgewaehlte, urspruenglich als Duplikat erkannte
+    und daher uebersprungene Zeilen nachtraeglich als neue Buchungen - umgeht
+    die Duplikat-Erkennung bewusst, da der Nutzer hier explizit bestaetigt,
+    dass es sich NICHT um ein Duplikat handelt. Die vier "all_*"-Listen sind
+    parallele Arrays (ein Eintrag pro urspruenglich uebersprungener Zeile,
+    unabhaengig davon ob ausgewaehlt) - "selected_rows" enthaelt die "row"-
+    Werte der tatsaechlich angehakten Zeilen.
+    """
+    selected = set(selected_rows)
+    imported_rows: list[int] = []
+    for row, date_str, payee, purpose, amount_str in zip(
+        all_row, all_date, all_payee, all_purpose, all_amount
+    ):
+        if row not in selected:
+            continue
+        try:
+            booking_date = date.fromisoformat(date_str)
+            amount = float(amount_str)
+        except ValueError:
+            continue
+        transaction_type = TransactionType.EINGANG if amount > 0 else TransactionType.AUSGANG
+        session.add(
+            Transaction(
+                account_id=account_id,
+                booking_date=booking_date,
+                payee=payee,
+                purpose=purpose or None,
+                amount=amount,
+                transaction_type=transaction_type,
+            )
+        )
+        imported_rows.append(row)
+    session.commit()
+
+    count = len(imported_rows)
+    message = (
+        f"{count} Buchung{'en' if count != 1 else ''} trotzdem importiert."
+        if count
+        else "Keine Zeile ausgewählt."
+    )
+    banner_class = (
+        "alert-error !border-green-200 !bg-green-50 !text-green-700 dark:!border-green-900 "
+        "dark:!bg-green-950/40 dark:!text-green-400"
+        if count
+        else "alert-error !border-gray-200 !bg-gray-50 !text-gray-600 dark:!border-gray-800 "
+        "dark:!bg-gray-900 dark:!text-gray-400"
+    )
+    html = f'<div class="{banner_class}">{message}</div>'
+    if imported_rows:
+        # Die soeben importierten Zeilen aus der Duplikate-Tabelle entfernen
+        # (rein clientseitig - die Ergebnisdaten der urspruenglichen CSV-Import-
+        # Antwort werden nicht persistiert, ein Neuladen der ganzen Seite wuerde
+        # den urspruenglichen Kontext verlieren).
+        html += "<script>(function(){var rows=" + str(imported_rows) + ";rows.forEach(function(r){var tr=document.querySelector('tr[data-dup-row=\"'+r+'\"]');if(tr)tr.remove();});})();</script>"
+    return HTMLResponse(content=html)

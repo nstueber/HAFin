@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_table.html" import table_search, sort_th %}
+{% from "_table.html" import sort_th %}
 
 {% block content %}
 {% if suggestions %}
@@ -20,11 +20,11 @@
     <div id="suggestion-{{ s.a.id }}-{{ s.b.id }}" class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-800">
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span class="font-medium text-gray-900 dark:text-gray-100">{{ s.a_account.display_name if s.a_account else "–" }}</span>
-        <span class="font-mono {{ 'text-green-600 dark:text-green-400' if s.a.amount > 0 else '' }}">{{ "%.2f"|format(s.a.amount) }}</span>
+        <span class="font-mono {{ 'text-green-600 dark:text-green-400' if s.a.amount > 0 else '' }}">{{ s.a.amount|format_currency }}</span>
         <span class="text-gray-400 dark:text-gray-500">({{ s.a.booking_date.isoformat() }}, {{ s.a.payee }}{% if s.a.purpose %}, {{ s.a.purpose }}{% endif %})</span>
         <span class="text-gray-400 dark:text-gray-500">↔</span>
         <span class="font-medium text-gray-900 dark:text-gray-100">{{ s.b_account.display_name if s.b_account else "–" }}</span>
-        <span class="font-mono {{ 'text-green-600 dark:text-green-400' if s.b.amount > 0 else '' }}">{{ "%.2f"|format(s.b.amount) }}</span>
+        <span class="font-mono {{ 'text-green-600 dark:text-green-400' if s.b.amount > 0 else '' }}">{{ s.b.amount|format_currency }}</span>
         <span class="text-gray-400 dark:text-gray-500">({{ s.b.booking_date.isoformat() }}, {{ s.b.payee }}{% if s.b.purpose %}, {{ s.b.purpose }}{% endif %})</span>
       </div>
       <div class="flex flex-shrink-0 gap-2">
@@ -86,6 +86,24 @@
     </div>
   </div>
 
+  <form method="get" action="/transactions" class="mt-4 flex flex-wrap items-center gap-2">
+    {% if uncategorized_only %}<input type="hidden" name="uncategorized" value="1" />{% endif %}
+    <input type="hidden" name="transfers" value="{{ transfers }}" />
+    <label class="text-sm text-gray-500 dark:text-gray-400" for="date-from-input">Von</label>
+    <input
+      type="date" id="date-from-input" name="date_from" value="{{ date_from }}"
+      class="form-input !w-auto !py-1.5 !text-xs" onchange="this.form.submit()"
+    />
+    <label class="text-sm text-gray-500 dark:text-gray-400" for="date-to-input">Bis</label>
+    <input
+      type="date" id="date-to-input" name="date_to" value="{{ date_to }}"
+      class="form-input !w-auto !py-1.5 !text-xs" onchange="this.form.submit()"
+    />
+    {% if date_from or date_to %}
+    <a href="{{ url_clear_dates }}" class="text-xs text-accent hover:underline">Zeitraum zurücksetzen</a>
+    {% endif %}
+  </form>
+
   <div id="bulk-action-bar" class="mt-4 hidden flex-wrap items-center gap-3 rounded-lg border border-accent/30 bg-accent/5 p-3 dark:bg-accent/10">
     <span class="text-sm text-gray-700 dark:text-gray-300">
       <span id="bulk-count">0</span> ausgewählt
@@ -125,10 +143,30 @@
   </div>
   <div id="bulk-action-bar-result"></div>
 
-  {% if rows %}
   <div id="transactions-table" class="mt-5">
-    <div class="mb-3">
-      {{ table_search("Buchungen durchsuchen…") }}
+    <div class="mb-3 flex items-center gap-2">
+      <input
+        type="search"
+        id="transactions-search-input"
+        name="q"
+        class="form-input max-w-xs"
+        placeholder="Buchungen durchsuchen… (auch Kategorie)"
+        hx-get="{{ search_url }}"
+        hx-trigger="input changed delay:300ms, search"
+        hx-target="#transaction-rows"
+        hx-swap="innerHTML"
+        hx-include="#search-negate-input"
+      />
+      <button
+        type="button"
+        id="search-negate-toggle"
+        class="btn-outline !px-2.5 !py-1.5"
+        title="Suche umkehren (Treffer ausschließen statt anzeigen)"
+        aria-pressed="false"
+      >
+        ≠
+      </button>
+      <input type="hidden" id="search-negate-input" name="negate" value="false" />
     </div>
     <div class="overflow-x-auto">
       <table class="table-base" id="transactions-full-table">
@@ -151,15 +189,22 @@
         </tbody>
       </table>
     </div>
+    <p id="transactions-empty" class="mt-4 text-sm text-gray-500 dark:text-gray-400 {{ 'hidden' if rows else '' }}">
+      {{ "Keine unkategorisierten Buchungen." if uncategorized_only else "Keine Buchungen gefunden." }}
+    </p>
   </div>
   <script>
-    hafinInitTable("transactions-table", ["date", "account", "payee", "purpose", "amount"], "transactions-count-x");
+    hafinInitTable("transactions-table", ["date", "account", "payee", "purpose", "amount"], "transactions-count-x", "transactions-empty");
+    document.getElementById("search-negate-toggle").addEventListener("click", function () {
+      var hidden = document.getElementById("search-negate-input");
+      var active = hidden.value !== "true";
+      hidden.value = active ? "true" : "false";
+      this.classList.toggle("!border-accent", active);
+      this.classList.toggle("!text-accent", active);
+      this.setAttribute("aria-pressed", active ? "true" : "false");
+      htmx.trigger("#transactions-search-input", "search");
+    });
   </script>
-  {% else %}
-  <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">
-    {{ "Keine unkategorisierten Buchungen." if uncategorized_only else "Noch keine Buchungen importiert." }}
-  </p>
-  {% endif %}
 </div>
 
 <dialog id="split-dialog" class="card page-narrow w-full backdrop:bg-gray-900/50">

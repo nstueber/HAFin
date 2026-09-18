@@ -11,7 +11,7 @@
       {% for c in candidates %}
       <option value="{{ c.id }}">
         {{ accounts_by_id[c.account_id].display_name if c.account_id in accounts_by_id else "–" }} ·
-        {{ c.booking_date.isoformat() }} · {{ c.payee }} · {{ "%.2f"|format(c.amount) }}
+        {{ c.booking_date.isoformat() }} · {{ c.payee }} · {{ c.amount|format_currency }}
       </option>
       {% endfor %}
     </optgroup>

@@ -2,6 +2,29 @@
   // Registry aller List.js-Instanzen (Tabellen mit Sortierung/Suche), Key = Container-ID.
   window.hafinLists = window.hafinLists || {};
 
+  // Zentrale Zahlenformatierung fuer alles, was clientseitig (nicht per Jinja-
+  // Filter format_currency) gerendert wird - z.B. Chart.js-Tooltips/Achsen oder
+  // live nachgerechnete Werte wie der Bargeld-Aufteilen-Restbetrag. Deutsches
+  // Format ("," als Dezimal-, "." als Tausendertrennzeichen) inkl. Euro-Zeichen,
+  // damit Zahlen App-weit konsistent aussehen, egal ob server- oder clientseitig
+  // gerendert.
+  var hafinCurrencyFormatter = new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+  });
+  window.hafinFormatCurrency = function (value) {
+    return hafinCurrencyFormatter.format(value);
+  };
+  // Variante ohne Euro-Zeichen, z.B. fuer Chart-Achsenbeschriftungen, wo das
+  // Symbol bei vielen Ticks unnoetig Platz braucht.
+  var hafinNumberFormatter = new Intl.NumberFormat("de-DE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  window.hafinFormatNumber = function (value) {
+    return hafinNumberFormatter.format(value);
+  };
+
   // Laedt per htmx-GET Inhalt in einen Dialog-Container und oeffnet den Dialog erst
   // danach - fuer alle Faelle, in denen ein <dialog> erst bei Bedarf befuellt wird
   // (Kategorie-Loeschbestaetigung, Dashboard-Drilldown in die Buchungsliste). Nutzt
@@ -52,7 +75,7 @@
     };
   }
 
-  window.hafinInitTable = function (containerId, valueNames, countElementId) {
+  window.hafinInitTable = function (containerId, valueNames, countElementId, emptyElementId) {
     var el = document.getElementById(containerId);
     if (!el) return;
     var existing = window.hafinLists[containerId];
@@ -74,13 +97,14 @@
       });
     }
 
-    if (countElementId) {
-      var countEl = document.getElementById(countElementId);
-      if (countEl) {
-        list.on("updated", function () {
-          countEl.textContent = list.matchingItems.length;
-        });
-      }
+    if (countElementId || emptyElementId) {
+      var countEl = countElementId ? document.getElementById(countElementId) : null;
+      var emptyEl = emptyElementId ? document.getElementById(emptyElementId) : null;
+      list.on("updated", function () {
+        var n = list.matchingItems.length;
+        if (countEl) countEl.textContent = n;
+        if (emptyEl) emptyEl.classList.toggle("hidden", n !== 0);
+      });
     }
   };
 
@@ -89,6 +113,13 @@
       var list = window.hafinLists[id];
       if (list && typeof list.reIndex === "function") {
         list.reIndex();
+        // reIndex() setzt searched/filtered zurueck und parst die Liste neu, loest
+        // dabei aber nicht zuverlaessig List.js' eigenes "updated"-Event aus (das
+        // unsere Live-Trefferzahl aktualisiert) - deshalb hier explizit erzwingen,
+        // statt uns auf internes reIndex()-Verhalten zu verlassen.
+        if (typeof list.update === "function") {
+          list.update();
+        }
       }
     }
   }

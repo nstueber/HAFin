@@ -55,17 +55,17 @@
     <dl class="mt-3 space-y-1.5 text-sm">
       <div class="flex justify-between">
         <dt class="text-gray-600 dark:text-gray-300">Einnahmen</dt>
-        <dd><button type="button" class="font-mono text-green-600 hover:underline dark:text-green-400" onclick="hafinOpenDialog('{{ total_tile.urls.income }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">{{ "%.2f"|format(total_tile.income) }}</button></dd>
+        <dd><button type="button" class="font-mono text-green-600 hover:underline dark:text-green-400" onclick="hafinOpenDialog('{{ total_tile.urls.income }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">{{ total_tile.income|format_currency }}</button></dd>
       </div>
       <div class="flex justify-between">
         <dt class="text-gray-600 dark:text-gray-300">Ausgaben</dt>
-        <dd><button type="button" class="font-mono text-red-600 hover:underline dark:text-red-400" onclick="hafinOpenDialog('{{ total_tile.urls.expense }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">{{ "%.2f"|format(total_tile.expense) }}</button></dd>
+        <dd><button type="button" class="font-mono text-red-600 hover:underline dark:text-red-400" onclick="hafinOpenDialog('{{ total_tile.urls.expense }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">{{ total_tile.expense|format_currency }}</button></dd>
       </div>
       <div class="flex justify-between border-t border-accent/20 pt-1.5">
         <dt class="font-medium text-gray-700 dark:text-gray-200">Netto</dt>
         <dd>
           <button type="button" class="font-mono font-semibold hover:underline {{ 'text-green-600 dark:text-green-400' if total_tile.net >= 0 else 'text-red-600 dark:text-red-400' }}" onclick="hafinOpenDialog('{{ total_tile.urls.net }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">
-            {{ "%+.2f"|format(total_tile.net) }}
+            {{ total_tile.net|format_currency(show_sign=True) }}
           </button>
         </dd>
       </div>
@@ -78,17 +78,17 @@
     <dl class="mt-3 space-y-1.5 text-sm">
       <div class="flex justify-between">
         <dt class="text-gray-600 dark:text-gray-300">Einnahmen</dt>
-        <dd><button type="button" class="font-mono text-green-600 hover:underline dark:text-green-400" onclick="hafinOpenDialog('{{ tile.urls.income }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">{{ "%.2f"|format(tile.income) }}</button></dd>
+        <dd><button type="button" class="font-mono text-green-600 hover:underline dark:text-green-400" onclick="hafinOpenDialog('{{ tile.urls.income }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">{{ tile.income|format_currency }}</button></dd>
       </div>
       <div class="flex justify-between">
         <dt class="text-gray-600 dark:text-gray-300">Ausgaben</dt>
-        <dd><button type="button" class="font-mono text-red-600 hover:underline dark:text-red-400" onclick="hafinOpenDialog('{{ tile.urls.expense }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">{{ "%.2f"|format(tile.expense) }}</button></dd>
+        <dd><button type="button" class="font-mono text-red-600 hover:underline dark:text-red-400" onclick="hafinOpenDialog('{{ tile.urls.expense }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">{{ tile.expense|format_currency }}</button></dd>
       </div>
       <div class="flex justify-between border-t border-gray-200 pt-1.5 dark:border-gray-800">
         <dt class="font-medium text-gray-700 dark:text-gray-200">Netto</dt>
         <dd>
           <button type="button" class="font-mono font-semibold hover:underline {{ 'text-green-600 dark:text-green-400' if tile.net >= 0 else 'text-red-600 dark:text-red-400' }}" onclick="hafinOpenDialog('{{ tile.urls.net }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">
-            {{ "%+.2f"|format(tile.net) }}
+            {{ tile.net|format_currency(show_sign=True) }}
           </button>
         </dd>
       </div>
@@ -100,54 +100,87 @@
 <div class="card">
   <div class="flex flex-wrap items-center justify-between gap-4">
     <h2 class="text-base font-semibold">Kategorien im Zeitraum</h2>
-    <form method="get" action="/" class="flex items-center gap-2">
-      <input type="hidden" name="granularity" value="{{ granularity }}" />
-      <input type="hidden" name="ref" value="{{ ref }}" />
-      <input type="hidden" name="transfers" value="{{ transfers }}" />
-      <select
-        name="account_id"
-        data-searchable
-        class="form-input !py-1.5 !text-xs"
-        onchange="this.form.submit()"
-      >
-        <option value="" {% if not selected_account_id %}selected{% endif %}>Alle Konten</option>
-        {% for acc in accounts %}
-        <option value="{{ acc.id }}" {% if selected_account_id == acc.id %}selected{% endif %}>
-          {{ acc.display_name }}
-        </option>
-        {% endfor %}
-      </select>
-    </form>
+    <div class="flex flex-wrap items-center gap-3">
+      {% if chart_data.labels %}
+      <div class="inline-flex overflow-hidden rounded-lg border border-gray-300 dark:border-gray-700">
+        <button type="button" id="chart-mode-simple" class="chart-mode-btn px-3 py-2 text-sm font-medium transition-colors bg-accent text-white" data-mode="simple">
+          Einfach
+        </button>
+        <button type="button" id="chart-mode-stacked" class="chart-mode-btn border-l border-gray-300 px-3 py-2 text-sm font-medium transition-colors bg-transparent text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800" data-mode="stacked">
+          Gestapelt nach Unterkategorie
+        </button>
+      </div>
+      {% endif %}
+      <form method="get" action="/" class="flex items-center gap-2">
+        <input type="hidden" name="granularity" value="{{ granularity }}" />
+        <input type="hidden" name="ref" value="{{ ref }}" />
+        <input type="hidden" name="transfers" value="{{ transfers }}" />
+        <select
+          name="account_id"
+          data-searchable
+          class="form-input !py-1.5 !text-xs"
+          onchange="this.form.submit()"
+        >
+          <option value="" {% if not selected_account_id %}selected{% endif %}>Alle Konten</option>
+          {% for acc in accounts %}
+          <option value="{{ acc.id }}" {% if selected_account_id == acc.id %}selected{% endif %}>
+            {{ acc.display_name }}
+          </option>
+          {% endfor %}
+        </select>
+      </form>
+    </div>
   </div>
 
-  {% if chart_items %}
-  <div class="mt-5" style="height: {{ chart_items|length * 40 + 40 }}px;">
+  {% if chart_data.labels %}
+  <div class="mt-5" style="height: {{ chart_data.labels|length * 40 + 40 }}px;">
     <canvas id="category-chart"></canvas>
   </div>
   <script>
     (function () {
-      var items = {{ chart_items|tojson }};
+      var chartData = {{ chart_data|tojson }};
       var palette = [
         "#f59e0b", "#8b5cf6", "#ef4444", "#10b981", "#ec4899",
         "#f97316", "#14b8a6", "#a855f7", "#84cc16", "#eab308"
       ];
-      var colors = items.map(function (item, i) {
-        return item.uncategorized ? "#9ca3af" : palette[i % palette.length];
-      });
       var isDark = document.documentElement.classList.contains("dark");
       var textColor = isDark ? "#d1d5db" : "#374151";
       var gridColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+      var currentMode = "simple";
+
+      function simpleColors() {
+        return chartData.simple_amounts.map(function (_, i) {
+          return chartData.simple_uncategorized[i] ? "#9ca3af" : palette[i % palette.length];
+        });
+      }
+
+      function buildDatasets(mode) {
+        if (mode === "stacked") {
+          return chartData.stacked_datasets.map(function (ds, i) {
+            return {
+              label: ds.label,
+              data: ds.data,
+              backgroundColor: palette[i % palette.length],
+              borderRadius: 4,
+              barPercentage: 0.7,
+              url: ds.url,
+            };
+          });
+        }
+        return [{
+          data: chartData.simple_amounts,
+          backgroundColor: simpleColors(),
+          borderRadius: 4,
+          barPercentage: 0.7,
+          urls: chartData.simple_urls,
+        }];
+      }
 
       var chart = new Chart(document.getElementById("category-chart"), {
         type: "bar",
         data: {
-          labels: items.map(function (i) { return i.label; }),
-          datasets: [{
-            data: items.map(function (i) { return i.amount; }),
-            backgroundColor: colors,
-            borderRadius: 4,
-            barPercentage: 0.7,
-          }],
+          labels: chartData.labels,
+          datasets: buildDatasets("simple"),
         },
         options: {
           indexAxis: "y",
@@ -156,9 +189,11 @@
           onClick: function (evt) {
             var points = chart.getElementsAtEventForMode(evt, "nearest", { intersect: true }, true);
             if (!points.length) return;
-            var item = items[points[0].index];
-            if (item) {
-              hafinOpenDialog(item.url, "dashboard-drilldown-dialog", "dashboard-drilldown-content");
+            var point = points[0];
+            var dataset = chart.data.datasets[point.datasetIndex];
+            var url = currentMode === "stacked" ? dataset.url : dataset.urls[point.index];
+            if (url) {
+              hafinOpenDialog(url, "dashboard-drilldown-dialog", "dashboard-drilldown-content");
             }
           },
           onHover: function (evt, elements) {
@@ -168,15 +203,47 @@
             legend: { display: false },
             tooltip: {
               callbacks: {
-                label: function (ctx) { return ctx.parsed.x.toFixed(2); },
+                label: function (ctx) {
+                  var label = currentMode === "stacked" ? ctx.dataset.label + ": " : "";
+                  return label + window.hafinFormatCurrency(ctx.parsed.x);
+                },
               },
             },
           },
           scales: {
-            x: { beginAtZero: true, ticks: { color: textColor }, grid: { color: gridColor } },
-            y: { ticks: { color: textColor }, grid: { display: false } },
+            x: {
+              stacked: false,
+              beginAtZero: true,
+              ticks: { color: textColor, callback: function (v) { return window.hafinFormatNumber(v); } },
+              grid: { color: gridColor },
+            },
+            y: { stacked: false, ticks: { color: textColor }, grid: { display: false } },
           },
         },
+      });
+
+      document.querySelectorAll(".chart-mode-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var mode = btn.getAttribute("data-mode");
+          if (mode === currentMode) return;
+          currentMode = mode;
+
+          document.querySelectorAll(".chart-mode-btn").forEach(function (b) {
+            var active = b === btn;
+            b.classList.toggle("bg-accent", active);
+            b.classList.toggle("text-white", active);
+            b.classList.toggle("bg-transparent", !active);
+            b.classList.toggle("text-gray-700", !active);
+            b.classList.toggle("dark:text-gray-200", !active);
+            b.classList.toggle("hover:bg-gray-100", !active);
+            b.classList.toggle("dark:hover:bg-gray-800", !active);
+          });
+
+          chart.data.datasets = buildDatasets(mode);
+          chart.options.scales.x.stacked = mode === "stacked";
+          chart.options.scales.y.stacked = mode === "stacked";
+          chart.update();
+        });
       });
     })();
   </script>
@@ -187,7 +254,7 @@
   {% endif %}
 </div>
 
-<dialog id="dashboard-drilldown-dialog" class="card w-[90vw] max-w-4xl backdrop:bg-gray-900/50">
+<dialog id="dashboard-drilldown-dialog" class="card modal-wide backdrop:bg-gray-900/50">
   <div id="dashboard-drilldown-content"></div>
 </dialog>
 {% endblock %}

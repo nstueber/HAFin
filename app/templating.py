@@ -19,4 +19,26 @@ def format_iban(value: Optional[str]) -> str:
     return " ".join(compact[i : i + 4] for i in range(0, len(compact), 4))
 
 
+def format_currency(value: Optional[float], show_sign: bool = False) -> str:
+    """Formatiert einen Betrag im deutschen Zahlenformat mit Euro-Zeichen:
+    "." als Tausender-, "," als Dezimaltrennzeichen, z.B. 1234.5 -> "1.234,50 €".
+
+    NICHT fuer <input>-Werte verwenden (HTML-Zahlenfelder erwarten "."als
+    Dezimaltrennzeichen) - nur fuer reine Anzeige-Texte gedacht.
+    """
+    if value is None:
+        value = 0.0
+    # Python formatiert Tausender mit "," und Dezimalstellen mit "." - fuers
+    # deutsche Format ueber einen Platzhalter vertauschen.
+    formatted = f"{abs(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    if value < 0:
+        sign = "-"
+    elif show_sign:
+        sign = "+"
+    else:
+        sign = ""
+    return f"{sign}{formatted} €"
+
+
 templates.env.filters["format_iban"] = format_iban
+templates.env.filters["format_currency"] = format_currency

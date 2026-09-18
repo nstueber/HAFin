@@ -34,7 +34,7 @@
           </td>
           <td class="purpose max-w-xs truncate text-xs text-gray-500 dark:text-gray-400" title="{{ e.purpose or '' }}">{{ e.purpose or "–" }}</td>
           <td class="amount whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if e.amount > 0 else '' }}">
-            {{ "%.2f"|format(e.amount) }}
+            {{ e.amount|format_currency }}
           </td>
         </tr>
         {% endfor %}

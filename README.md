@@ -108,11 +108,25 @@ Jede Zeile wird einzeln behandelt:
 
 Das Ergebnis zeigt Zeilen gelesen / importiert / übersprungen (Duplikat) sowie
 eine Liste aller Zeilen mit Parse-Fehlern. Die Duplikat-Kachel ist klickbar und
-öffnet ein Dialog mit allen übersprungenen Zeilen (Datum, Auftraggeber/
-Empfänger, Verwendungszweck, Betrag, Referenz auf die bereits vorhandene
-Transaktion). Umbuchungen zwischen zwei eigenen Konten werden beim Import
-nicht automatisch verknüpft - das passiert separat auf der Buchungen-Seite
-(siehe unten).
+öffnet einen (`.modal-wide`, siehe Styling-Abschnitt) Dialog mit allen
+übersprungenen Zeilen (Datum, Auftraggeber/Empfänger, Verwendungszweck, Betrag,
+Referenz auf die bereits vorhandene Transaktion). Umbuchungen zwischen zwei
+eigenen Konten werden beim Import nicht automatisch verknüpft - das passiert
+separat auf der Buchungen-Seite (siehe unten).
+
+**Trotzdem importieren:** jede Zeile in der Duplikate-Tabelle hat eine
+Checkbox; „Ausgewählte trotzdem importieren" (`POST /import/force-import`)
+legt die markierten Zeilen als neue, reguläre Buchungen an und umgeht dabei
+bewusst die Duplikat-Erkennung (der Nutzer bestätigt hier explizit, dass es
+sich NICHT um ein Duplikat handelt). Da die urspünglichen Import-Ergebnisdaten
+(Zeilen gelesen/importiert/Fehler) nur für diesen einen Request berechnet und
+nicht persistiert werden, kann nach dem Force-Import nicht einfach die ganze
+Seite neu geladen werden, ohne diesen Kontext zu verlieren - stattdessen
+werden die urspünglichen Zeilendaten als parallele Hidden-Input-Arrays
+(`all_row`/`all_date`/`all_payee`/`all_purpose`/`all_amount`) direkt im
+Formular mitgeführt, und die Antwort entfernt die erfolgreich importierten
+Zeilen per eingebettetem `<script>` clientseitig aus der Tabelle, statt sie
+komplett neu vom Server zu laden.
 
 ## Kategorien & Kategorisierung
 
@@ -201,6 +215,54 @@ jeweils zugewiesenen Kategorie und der Rest weiterhin zu "Bargeld" - macht
 zusammen immer exakt den Original-Betrag, keine Doppelzählung (siehe
 Dashboard-Abschnitt unten).
 
+## Suche, Negativsuche und Datumsfilter in der Buchungsliste
+
+Die Textsuche läuft **serverseitig** über den kompletten, zum aktiven Filter
+(Konto/Umbuchung/Zeitraum) passenden Datenbestand - nicht nur über die per
+`LIST_LIMIT` (200) geladenen Zeilen (`GET /transactions/search-rows`, mit 300ms
+Debounce über `hx-trigger="input changed delay:300ms, search"` - kein eigener
+JS-Debounce-Code nötig, das übernimmt htmx nativ). Durchsucht werden
+Auftraggeber/Empfänger, Verwendungszweck, Kontoname und der volle
+Kategorie-Name inklusive Oberkategorie (`_category_display_name()`) - eine
+Suche nach der Oberkategorie findet also auch Buchungen mit einer
+zugeordneten Unterkategorie und umgekehrt. Gefundene Treffer werden bei mehr
+als `SEARCH_LIMIT` (500) Treffern ebenfalls gekappt, aber deutlich großzügiger
+als die normale 200er-Seitenbegrenzung. Ein Klick auf den "≠"-Button daneben
+kehrt die Suche um (nur Buchungen anzeigen, die NICHT dem Suchbegriff
+entsprechen) und triggert per `htmx.trigger(el, "search")` sofort eine neue
+Anfrage mit dem aktuellen Suchtext.
+
+Die "Zeige X von Y Buchungen"-Anzeige bleibt dabei korrekt getrennt: Y (Gesamt
+nach Server-Filter) ändert sich nur bei einem echten Filterwechsel (Seiten-
+Neuladen), X (aktuell sichtbare Treffer) wird rein clientseitig aus der
+tatsächlichen Zeilenzahl im DOM abgeleitet, sowohl nach einem Server-Suche-
+Swap als auch beim client-seitigen Sortieren.
+
+**Zwei gefundene Bugs bei der Umsetzung, beide nicht offensichtlich:**
+- htmx' generisches Fragment-Parsing kommt mit einer Server-Antwort, die NUR
+  aus mehreren rohen `<tr>`-Elementen besteht (kein umschließendes
+  `<table>`/`<tbody>`), nicht zuverlässig klar - führte zu einem
+  `htmx:swapError` ("e.querySelectorAll is not a function"), obwohl die
+  Antwort laut htmx-eigener Dokumentation für genau diesen Fall (Erkennung an
+  den ersten Zeichen der Antwort) eigentlich automatisch in `<table><tbody>`
+  gewrappt werden sollte. Behoben, indem die Server-Antwort bewusst NICHT mit
+  einem zusätzlichen, anders benannten Element (z.B. einem Out-of-Band-Element
+  für die Trefferzahl) vermischt wird - nur die reinen `<tr>`-Zeilen, sonst
+  nichts.
+- List.js' `reIndex()` (nötig, um nach einem htmx-Swap neue Zeilen zu
+  erkennen) setzt intern `matchingItems` zurück, feuert dabei aber nicht
+  zuverlässig das eigene `updated`-Event, auf dem die Live-Trefferzahl
+  aufbaut - deshalb ruft `reindexAllTables()` in `enhancements.js` nach jedem
+  `list.reIndex()` zusätzlich explizit `list.update()` auf, statt sich auf
+  internes Event-Chaining zu verlassen.
+
+Ein Datumsbereich-Filter (Von/Bis, zwei `<input type="date">`) filtert
+zusätzlich serverseitig (wirkt sich also auch auf Y aus) und ist mit den
+übrigen Filtern kombinierbar - Standard ist kein Datumsfilter (alle
+Zeiträume). Die Felder brauchen `!w-auto` gegen `.form-input`s eigenes
+`w-full`, sonst sprengt ein einzelnes Datumsfeld als Flex-Kind die ganze
+Filterzeile und der zugehörige Label-Text rutscht in die nächste Zeile.
+
 ## Umbuchungserkennung
 
 Jede Buchung ohne Verknüpfung wird gegen alle anderen noch unverknüpften
@@ -214,6 +276,18 @@ Stellen angezeigt:
   Buchungen liegt)
 - direkt in der jeweiligen Tabellenzeile (Spalte "Umbuchung") als "Treffer"
   mit Konto/Datum/Auftraggeber
+
+Die Vorschlagsliste dedupliziert ein erkanntes Paar A↔B unabhängig davon, von
+welcher Seite die Erkennung ausgeht (ein `frozenset({a.id, b.id})` als
+Dedup-Key ist dafür unabhängig von der Reihenfolge). Damit ein Paar dabei
+IMMER unter derselben, vorhersagbaren `id="suggestion-{a}-{b}"` im DOM landet
+(statt je nach Iterationsreihenfolge mal als "suggestion-3-7", mal als
+"suggestion-7-3"), werden `a`/`b` beim Aufbau der Liste zusätzlich nach
+Transaktions-ID sortiert. Das ist auch die Grundlage dafür, dass eine
+Bestätigung *direkt aus der Tabellenzeile* (nicht über die Vorschläge-Karte)
+die zugehörige Karte trotzdem korrekt per Out-of-Band-`hx-swap-oob="delete"`
+entfernt, statt sie als scheinbar zweiten, bereits erledigten Vorschlag stehen
+zu lassen.
 
 Betrags-Matching ist immer strikt exakt (z.B. +250.00/-250.00) - sowohl für
 automatische Vorschläge als auch für die manuelle Verknüpfung. Kandidaten mit
@@ -339,8 +413,8 @@ das Kategorie-Diagramm über Chart.js' eigenen `onClick`-Callback (liefert den
 Index des angeklickten Balkens). Dasselbe Muster (`hafinOpenDialog`) wird auch
 für die Kategorie-Löschbestätigung verwendet, siehe oben.
 
-Das Drilldown-Modal ist deutlich breiter als die übrigen Dialoge in der App
-(`w-[90vw] max-w-4xl` statt `.page-narrow`), da eine 5-spaltige Buchungstabelle
+Das Drilldown-Modal nutzt `.modal-wide` (`mx-auto w-[90vw] max-w-4xl`, siehe
+Styling-Abschnitt) statt `.page-narrow`, da eine 5-spaltige Buchungstabelle
 sonst horizontal scrollen müsste, und enthält dieselbe Sortier-/Suchfunktion
 wie die Haupt-Buchungsliste (List.js, `hafinInitTable(...)` mit den gleichen
 sortierbaren Spaltenköpfen und Suchfeld) inkl. einer live mitlaufenden
@@ -362,6 +436,44 @@ einem "Split"-Badge und dem tatsächlichen Split-Anteil als Betrag (nicht dem
 vollen Buchungsbetrag). Die Einnahmen-/Ausgaben-/Netto-Kacheln sind davon
 komplett unberührt - sie summieren immer den echten, unveränderten
 Buchungsbetrag, unabhängig von etwaigen Splits.
+
+**Gestapelter Chart-Modus (Unterkategorien):** ein Umschalter über dem Chart
+("Einfach" / "Gestapelt nach Unterkategorie") wechselt zwischen einem
+einfachen Balken je Oberkategorie und einem gestapelten Balken, dessen
+Segmente den tatsächlich zugewiesenen Unterkategorien entsprechen (native
+Chart.js-Stapel-Balken, `scales.x.stacked`/`scales.y.stacked`). Beide
+Datensätze (`simple_amounts` fürs einfache, `stacked_datasets` fürs gestapelte
+Bild) werden serverseitig in EINEM Request vorbereitet
+(`_category_chart_data()` in `dashboard.py`) und komplett im initialen
+`chart_data|tojson`-Blob an die Seite übergeben - der Umschalter braucht
+dadurch keinen weiteren Server-Roundtrip, er tauscht nur `chart.data.datasets`
+aus und ruft `chart.update()`. Pro Oberkategorie entsteht dabei EIN Chart.js-
+Dataset je tatsächlich vorkommender Unterkategorie (plus ein "Allgemein"-
+Segment für direkt der Oberkategorie zugeordnete Buchungen), mit überall
+0-Werten außer an der Stelle der eigenen Oberkategorie - der Standardweg für
+"nicht überall gleiche Kindkategorien" bei gestapelten Chart.js-Balken.
+
+Ein Klick auf einen **einzelnen Unterkategorie-Balken-Abschnitt** (im
+gestapelten Modus) öffnet das Drilldown-Modal gefiltert auf GENAU diese
+Unterkategorie (`exact=true` am Drilldown-Endpunkt) statt auf die ganze
+Oberkategorie inklusive aller Geschwister-Unterkategorien - im einfachen
+Modus bleibt ein Balken-Klick weiterhin ein Roll-up über die komplette
+Oberkategorie samt alle ihrer Unterkategorien (unverändertes Verhalten,
+`exact` fehlt/ist `false`). Beide Verhalten laufen über denselben
+`_matches_category()`-Codepfad in `dashboard_transactions()`, nur mit
+unterschiedlichem Vergleichsfeld (`category_id` vs. `top_category_id` je
+Eintrag).
+
+**Deutsches Zahlenformat überall:** ein zentraler Jinja-Filter
+`format_currency` (`app/templating.py`, "." als Tausender-, "," als
+Dezimaltrennzeichen, Euro-Zeichen, optionales `show_sign=True` für ein
+führendes "+" bei positiven Werten wie beim Netto-Betrag) ersetzt alle
+bisherigen `"%.2f"|format(...)`-Stellen serverseitig. Für clientseitig
+gerenderte Zahlen (Chart.js-Tooltips/Achsenbeschriftungen, der live
+nachgerechnete Bargeld-Aufteilen-Restbetrag) gibt es das JS-Äquivalent
+`window.hafinFormatCurrency`/`window.hafinFormatNumber` in `enhancements.js`
+(`Intl.NumberFormat("de-DE", ...)`) - **nicht** für `<input>`-Werte verwenden,
+HTML-Zahlenfelder brauchen weiterhin "." als Dezimaltrennzeichen.
 
 Bewusst nicht Teil dieser ersten Version: Vergleich zu Vorperioden, Trend über
 mehrere Zeiträume.
@@ -414,7 +526,17 @@ CSV-Import, Import-Ergebnis) nutzen einheitlich `.page-narrow`
 Mapping-Profil-Wizard `.page-wide` (`mx-auto max-w-4xl`), zusätzlich zur
 `.card`-Klasse - damit sind alle diese Seiten konsequent zentriert statt
 pro Seite unterschiedlich breit/linksbündig. Listen-/Tabellenseiten nutzen
-weiterhin die volle Breite von `<main>` ohne diese Klassen.
+weiterhin die volle Breite von `<main>` ohne diese Klassen. Für Dialoge, die
+eine mehrspaltige Tabelle statt eines einfachen Formulars zeigen
+("Übersprungene Duplikate" beim CSV-Import, Dashboard-Drilldown), gibt es
+zusätzlich `.modal-wide` (`mx-auto w-[90vw] max-w-4xl`) als eigene, deutlich
+breitere Klasse - eine gemeinsame Stelle statt die Breite pro Dialog einzeln
+zu setzen. Bei einer erneuten Meldung "Seite X ist schmäler als Seite Y":
+zuerst per `grep` prüfen, welche Klasse die betroffene Seite/der Dialog
+TATSÄCHLICH im aktuellen Code trägt, bevor vermutet wird, dass etwas fehlt -
+mehrfach stellte sich in der Vergangenheit heraus, dass die Klassen bereits
+identisch waren und die gemeldete Seite schlicht aus dem Browser-Cache einer
+älteren Version kam (harter Reload/Cache leeren behebt das dann).
 
 Natives `<dialog>` (z.B. "Übersprungene Duplikate" beim CSV-Import) wird
 über `.showModal()` geöffnet; Tailwinds Preflight setzt `margin: 0` auf

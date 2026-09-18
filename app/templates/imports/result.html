@@ -35,16 +35,19 @@
   </dl>
 
   {% if duplicates %}
-  <dialog id="duplicates-dialog" class="card page-narrow w-full backdrop:bg-gray-900/50">
+  <dialog id="duplicates-dialog" class="card modal-wide backdrop:bg-gray-900/50">
     <h3 class="text-base font-semibold">Übersprungene Duplikate</h3>
     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
       Diese Zeilen entsprachen bereits vorhandenen Buchungen (gleiches Datum, Betrag,
-      Verwendungszweck und Auftraggeber/Empfänger auf diesem Konto).
+      Verwendungszweck und Auftraggeber/Empfänger auf diesem Konto). Handelt es sich
+      doch nicht um ein Duplikat, können ausgewählte Zeilen trotzdem importiert werden.
     </p>
+    <div id="force-import-result" class="mt-3"></div>
     <div class="mt-4 max-h-96 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
       <table class="table-base">
         <thead>
           <tr>
+            <th class="w-8"></th>
             <th>Zeile</th>
             <th>Datum</th>
             <th>Auftraggeber/Empfänger</th>
@@ -55,12 +58,15 @@
         </thead>
         <tbody>
           {% for dup in duplicates %}
-          <tr>
+          <tr data-dup-row="{{ dup.row }}">
+            <td>
+              <input type="checkbox" name="selected_rows" value="{{ dup.row }}" form="force-import-form" class="rounded border-gray-300 text-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-900" />
+            </td>
             <td class="font-mono text-xs">{{ dup.row }}</td>
             <td class="whitespace-nowrap font-mono text-xs">{{ dup.booking_date.isoformat() }}</td>
             <td>{{ dup.payee }}</td>
             <td class="text-xs text-gray-500 dark:text-gray-400">{{ dup.purpose or "–" }}</td>
-            <td class="whitespace-nowrap text-right font-mono">{{ "%.2f"|format(dup.amount) }}</td>
+            <td class="whitespace-nowrap text-right font-mono">{{ dup.amount|format_currency }}</td>
             <td class="whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
               {{ dup.existing_created_at.date().isoformat() }} (#{{ dup.existing_transaction_id }})
             </td>
@@ -69,11 +75,27 @@
         </tbody>
       </table>
     </div>
-    <div class="mt-4 flex justify-end">
+
+    <form
+      id="force-import-form"
+      hx-post="/import/force-import"
+      hx-target="#force-import-result"
+      hx-swap="innerHTML"
+      class="mt-4 flex items-center justify-between gap-3"
+    >
+      <input type="hidden" name="account_id" value="{{ account.id }}" />
+      {% for dup in duplicates %}
+      <input type="hidden" name="all_row" value="{{ dup.row }}" />
+      <input type="hidden" name="all_date" value="{{ dup.booking_date.isoformat() }}" />
+      <input type="hidden" name="all_payee" value="{{ dup.payee }}" />
+      <input type="hidden" name="all_purpose" value="{{ dup.purpose or '' }}" />
+      <input type="hidden" name="all_amount" value="{{ dup.amount }}" />
+      {% endfor %}
+      <button type="submit" class="btn-outline">Ausgewählte trotzdem importieren</button>
       <button type="button" class="btn-outline" onclick="document.getElementById('duplicates-dialog').close()">
         Schließen
       </button>
-    </div>
+    </form>
   </dialog>
   {% endif %}
 

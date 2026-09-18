@@ -11,7 +11,7 @@
     {{ row.txn.purpose or "–" }}
   </td>
   <td class="amount whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if row.txn.amount > 0 else '' }}">
-    {{ "%.2f"|format(row.txn.amount) }}
+    {{ row.txn.amount|format_currency }}
   </td>
   <td class="min-w-[12rem]">
     {% if row.txn.counter_transaction_id %}

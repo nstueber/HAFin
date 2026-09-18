@@ -133,6 +133,7 @@ def _category_entries(txns: list[Transaction], categories_by_id: dict, splits_by
             remainder = t.amount - allocated
             entries.append(
                 {
+                    "category_id": t.category_id,
                     "top_category_id": _top_level_category_id(t.category_id, categories_by_id),
                     "amount": remainder,
                     "txn": t,
@@ -142,6 +143,7 @@ def _category_entries(txns: list[Transaction], categories_by_id: dict, splits_by
             for s in splits:
                 entries.append(
                     {
+                        "category_id": s.category_id,
                         "top_category_id": _top_level_category_id(s.category_id, categories_by_id),
                         "amount": s.amount,
                         "txn": t,
@@ -151,6 +153,7 @@ def _category_entries(txns: list[Transaction], categories_by_id: dict, splits_by
         else:
             entries.append(
                 {
+                    "category_id": t.category_id,
                     "top_category_id": _top_level_category_id(t.category_id, categories_by_id),
                     "amount": t.amount,
                     "txn": t,
@@ -160,27 +163,6 @@ def _category_entries(txns: list[Transaction], categories_by_id: dict, splits_by
     return entries
 
 
-def _category_breakdown(
-    txns: list[Transaction], categories_by_id: dict, splits_by_txn_id: dict
-) -> list[dict]:
-    entries = _category_entries(txns, categories_by_id, splits_by_txn_id)
-    sums: dict = defaultdict(float)
-    for e in entries:
-        sums[e["top_category_id"]] += e["amount"]
-
-    items = []
-    for cat_id, amount in sums.items():
-        if amount == 0:
-            continue
-        label = "Unkategorisiert" if cat_id is None else categories_by_id[cat_id].name
-        key = "uncategorized" if cat_id is None else str(cat_id)
-        items.append(
-            {"label": label, "amount": abs(amount), "uncategorized": cat_id is None, "key": key}
-        )
-    items.sort(key=lambda item: item["amount"], reverse=True)
-    return items
-
-
 def _drilldown_url(
     granularity: str,
     ref: date,
@@ -188,6 +170,7 @@ def _drilldown_url(
     account_id: Optional[int],
     kind: str,
     category_key: Optional[str] = None,
+    exact: bool = False,
 ) -> str:
     params = [
         f"granularity={granularity}",
@@ -199,7 +182,92 @@ def _drilldown_url(
         params.append(f"account_id={account_id}")
     if category_key is not None:
         params.append(f"category={category_key}")
+    if exact:
+        params.append("exact=true")
     return "/dashboard/transactions?" + "&".join(params)
+
+
+def _category_chart_data(
+    entries: list[dict],
+    categories_by_id: dict,
+    granularity: str,
+    ref_date: date,
+    transfers: str,
+    account_id_int: Optional[int],
+) -> dict:
+    """Baut die komplette, fuer Chart.js direkt verwendbare Datenstruktur fuer
+    die Kategorie-Aufschluesselung - sowohl fuer den einfachen (ein Balken je
+    Oberkategorie) als auch den gestapelten Modus (ein Segment je tatsaechlich
+    zugewiesener Unterkategorie), damit beide Modi client-seitig ohne erneuten
+    Server-Request umgeschaltet werden koennen.
+    """
+    top_sums: dict = defaultdict(float)
+    sub_sums: dict = defaultdict(float)  # (top_id, actual_category_id) -> amount
+    for e in entries:
+        top_sums[e["top_category_id"]] += e["amount"]
+        sub_sums[(e["top_category_id"], e["category_id"])] += e["amount"]
+
+    top_items = []
+    for top_id, amount in top_sums.items():
+        if amount == 0:
+            continue
+        label = "Unkategorisiert" if top_id is None else categories_by_id[top_id].name
+        key = "uncategorized" if top_id is None else str(top_id)
+        top_items.append({"top_id": top_id, "label": label, "amount": abs(amount), "uncategorized": top_id is None, "key": key})
+    top_items.sort(key=lambda i: i["amount"], reverse=True)
+
+    labels = [i["label"] for i in top_items]
+    simple_amounts = [i["amount"] for i in top_items]
+    simple_uncategorized = [i["uncategorized"] for i in top_items]
+    simple_urls = [
+        _drilldown_url(granularity, ref_date, transfers, account_id_int, "category", i["key"])
+        for i in top_items
+    ]
+
+    # Segmente je Oberkategorie einsammeln (fuer den gestapelten Modus).
+    segments_by_top: dict = defaultdict(list)
+    for (top_id, actual_id), amount in sub_sums.items():
+        if amount == 0:
+            continue
+        if actual_id == top_id:
+            label = "Unkategorisiert" if top_id is None else "Allgemein"
+        else:
+            label = categories_by_id[actual_id].name if actual_id in categories_by_id else "?"
+        segments_by_top[top_id].append({"category_id": actual_id, "label": label, "amount": abs(amount)})
+    for segs in segments_by_top.values():
+        segs.sort(key=lambda s: s["amount"], reverse=True)
+
+    # Jede Oberkategorie kann eine andere Anzahl/Art von Unterkategorien haben -
+    # fuer Chart.js' gestapelte Balken brauchen wir pro tatsaechlicher Kategorie
+    # EIN Dataset ueber ALLE Balken hinweg (0 bei jeder anderen Oberkategorie).
+    stacked_datasets = []
+    for index, top_item in enumerate(top_items):
+        for seg in segments_by_top.get(top_item["top_id"], []):
+            data = [0] * len(top_items)
+            data[index] = seg["amount"]
+            stacked_datasets.append(
+                {
+                    "label": seg["label"],
+                    "data": data,
+                    "url": _drilldown_url(
+                        granularity,
+                        ref_date,
+                        transfers,
+                        account_id_int,
+                        "category",
+                        "uncategorized" if seg["category_id"] is None else str(seg["category_id"]),
+                        exact=True,
+                    ),
+                }
+            )
+
+    return {
+        "labels": labels,
+        "simple_amounts": simple_amounts,
+        "simple_uncategorized": simple_uncategorized,
+        "simple_urls": simple_urls,
+        "stacked_datasets": stacked_datasets,
+    }
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -257,11 +325,10 @@ def dashboard(
         t for t in txns if account_id_int is None or t.account_id == account_id_int
     ]
     splits_by_txn_id = _splits_by_transaction(session, [t.id for t in breakdown_txns])
-    chart_items = _category_breakdown(breakdown_txns, categories_by_id, splits_by_txn_id)
-    for item in chart_items:
-        item["url"] = _drilldown_url(
-            granularity, ref_date, transfers, account_id_int, "category", item["key"]
-        )
+    breakdown_entries = _category_entries(breakdown_txns, categories_by_id, splits_by_txn_id)
+    chart_data = _category_chart_data(
+        breakdown_entries, categories_by_id, granularity, ref_date, transfers, account_id_int
+    )
 
     prev_ref = _shift_ref(granularity, start, -1)
     next_ref = _shift_ref(granularity, start, 1)
@@ -288,7 +355,7 @@ def dashboard(
             "accounts": accounts,
             "selected_account_id": account_id_int,
             "ref": ref_date.isoformat(),
-            "chart_items": chart_items,
+            "chart_data": chart_data,
         },
     )
 
@@ -302,6 +369,7 @@ def dashboard_transactions(
     account_id: str = "",
     kind: str = "net",
     category: str = "",
+    exact: bool = False,
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     """Liefert die Buchungen hinter einer angeklickten Zahl im Dashboard (Kennzahlen-
@@ -358,12 +426,18 @@ def dashboard_transactions(
         splits_by_txn_id = _splits_by_transaction(session, [t.id for t in txns])
         all_entries = _category_entries(txns, categories_by_id, splits_by_txn_id)
 
-        def _matches_category(top_id: Optional[int]) -> bool:
+        def _matches_category(entry: dict) -> bool:
+            # "exact": Klick auf ein einzelnes Unterkategorie-Segment im gestapelten
+            # Chart-Modus - nur dessen eigene (Split-)Eintraege, ohne Geschwister-
+            # Unterkategorien. Ohne "exact" (Klick auf den ganzen Balken im
+            # einfachen Modus oder auf eine Kachel): die ganze Oberkategorie
+            # inkl. aller Unterkategorien (Roll-up), wie bisher.
+            actual_id = entry["category_id"] if exact else entry["top_category_id"]
             if category == "uncategorized":
-                return top_id is None
-            return category.isdigit() and top_id == int(category)
+                return actual_id is None
+            return category.isdigit() and actual_id == int(category)
 
-        matching = [e for e in all_entries if _matches_category(e["top_category_id"])]
+        matching = [e for e in all_entries if _matches_category(e)]
         matching.sort(key=lambda e: (e["txn"].booking_date, e["txn"].id), reverse=True)
         entries = [
             {
