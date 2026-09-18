@@ -37,6 +37,36 @@
     });
   };
 
+  // Buchungsdetails-Modal: "Bearbeiten" schaltet erst nach einer bestaetigten
+  // Warnung in den Bearbeiten-Modus um (rein clientseitiges Sichtbarkeits-Toggle
+  // zwischen #detail-view-section und #detail-edit-form, beide Teil derselben
+  // htmx-Antwort - kein extra Request noetig, um den Bearbeiten-Modus zu
+  // betreten). Als globale Funktionen definiert (nicht IIFE-lokal in _detail.html),
+  // da das Modal bei jedem Oeffnen per htmx-Swap komplett neu gerendert wird.
+  window.hafinConfirmEditTransaction = function () {
+    var ok = window.confirm(
+      "Achtung: Wird diese Buchung geändert, kann sie bei einem erneuten Import " +
+      "derselben Quelldaten nicht mehr zuverlässig als bereits vorhanden erkannt " +
+      "werden (Datum, Betrag, Verwendungszweck und Auftraggeber/Empfänger werden " +
+      "für die Duplikat-Erkennung genutzt) und könnte dadurch versehentlich doppelt " +
+      "importiert werden.\n\nTrotzdem bearbeiten?"
+    );
+    if (!ok) return;
+    var view = document.getElementById("detail-view-section");
+    var form = document.getElementById("detail-edit-form");
+    if (view) view.classList.add("hidden");
+    if (form) {
+      form.classList.remove("hidden");
+      if (window.hafinInitSearchableSelects) window.hafinInitSearchableSelects();
+    }
+  };
+  window.hafinCancelEditTransaction = function () {
+    var view = document.getElementById("detail-view-section");
+    var form = document.getElementById("detail-edit-form");
+    if (form) form.classList.add("hidden");
+    if (view) view.classList.remove("hidden");
+  };
+
   // List.js' eingebaute Suche (Version 2.3.1) hat zwei Bugs: (1) sie escaped
   // Regex-Sonderzeichen im Suchstring ("-", "+", ".", ...), vergleicht intern
   // aber trotzdem nur per einfachem indexOf() statt per Regex - das escapte

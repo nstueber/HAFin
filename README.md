@@ -249,6 +249,14 @@ jeweils zugewiesenen Kategorie und der Rest weiterhin zu "Bargeld" - macht
 zusammen immer exakt den Original-Betrag, keine Doppelzählung (siehe
 Dashboard-Abschnitt unten).
 
+Die Speichern-Antwort aktualisiert zusätzlich per Out-of-Band-Swap die
+Haupttabellenzeile (frisches "Aufgeteilt (N)"-Badge, ohne den Dialog zu
+schließen) - das ist genau die Stelle, an der ein vermischtes Antwortformat
+(Split-Formular + bare `<tr>`) einmal dazu führte, dass eine komplette
+Buchungszeile inkl. Mehrfachauswahl-Checkbox lose im Modal landete, siehe die
+htmx-Fragment-Parsing-Notiz weiter unten - die OOB-Zeile wird seitdem in ein
+eigenes `<table><tbody>` gewickelt.
+
 **Buchung löschen**: Mülleimer-Icon in der neuen "Aktionen"-Spalte am
 Zeilenende, mit nativem `hx-confirm` vor dem eigentlichen Request (`POST
 /transactions/{id}/delete`). Echtes Löschen aus der Datenbank, kein
@@ -293,7 +301,35 @@ Jede Trefferzeile ist klickbar und öffnet wiederum denselben Detail-Dialog für
 die angeklickte Buchung (statt zu versuchen, die Hauptliste zu einer ggf. gar
 nicht geladenen Zeile zu scrollen/filtern - robuster, da unabhängig davon, ob
 die Zielbuchung gerade im 200er-Limit oder einem aktiven Suchergebnis sichtbar
-ist).
+ist). Beide Trefferlisten sind wie die Haupttabelle sortier-/durchsuchbar
+(eigene List.js-Instanz je Liste, `sort_th()`/`table_search()` aus
+`_table.html`) - da der Detail-Dialog bei jedem Öffnen komplett neu gerendert
+wird (gleiche Container-IDs `similar-exact-table`/`similar-similar-table` bei
+jeder neuen Buchung), greift hier dieselbe Staleness-Erkennung in
+`hafinInitTable()` wie beim Dashboard-Drilldown.
+
+**Buchung bearbeiten** (im Detail-Dialog): ein "Bearbeiten"-Button zeigt zuerst
+einen nativen `confirm()`-Warnhinweis ("könnte beim nächsten Import
+versehentlich doppelt importiert werden, da Datum/Betrag/Verwendungszweck/
+Auftraggeber für die Duplikat-Erkennung genutzt werden") - erst nach
+Bestätigung blendet reines Client-JS (`hafinConfirmEditTransaction()` in
+`enhancements.js`) von der Ansicht auf ein Bearbeiten-Formular um (Datum,
+Betrag, Verwendungszweck, Auftraggeber/Empfänger, Konto), beide bereits Teil
+derselben Server-Antwort. "Speichern" postet an `POST /transactions/{id}/edit`
+(serverseitige Validierung von Datum/Betrag/Pflichtfeldern, bei Fehler bleibt
+das Formular mit den eingegebenen - nicht den alten - Werten offen), "Abbrechen"
+schaltet ohne Request zurück zur Ansicht. Für Buchungen, die Teil einer
+bestätigten Umbuchung sind (`counter_transaction_id` gesetzt), gibt es
+weder den Bearbeiten-Button noch das Formular (nur ein Hinweistext) - ein
+freies Bearbeiten könnte sonst unbemerkt die feste Betrags-/Konto-Beziehung
+zur Gegenbuchung brechen; Verknüpfung erst aufheben, dann bearbeiten.
+
+**Kommentarfeld**: freies Notizfeld pro Buchung (`Transaction.comment`,
+nullable, per `_add_missing_columns()` automatisch zur bestehenden Tabelle
+ergänzt), direkt im Detail-Dialog editierbar (`POST /transactions/{id}/comment`)
+- bewusst UNABHÄNGIG vom Bearbeiten-Warnhinweis oben, da der Kommentar kein
+Feld ist, das die Duplikat-Erkennung nutzt, und deshalb auch für Buchungen
+editierbar bleibt, die Teil einer Umbuchung sind (kein Sperrhinweis nötig).
 
 ## Suche, Negativsuche und Datumsfilter in der Buchungsliste
 
@@ -335,6 +371,23 @@ Swap als auch beim client-seitigen Sortieren.
   aufbaut - deshalb ruft `reindexAllTables()` in `enhancements.js` nach jedem
   `list.reIndex()` zusätzlich explizit `list.update()` auf, statt sich auf
   internes Event-Chaining zu verlassen.
+
+**Dieselbe Bugklasse (bare `<tr>`/OOB-Element-Mischung) tauchte in einer noch
+schädlicheren Form erneut auf** (Bargeld-Aufteilen-Modal, siehe unten): dort
+führte die Mischung nicht zu einem harten `swapError`, sondern STILL zu
+verwaistem, falsch geparstem HTML - der Browser verwirft beim Parsen eines
+Fragments, das nicht mit `<tr` beginnt, die `<tr>`/`<td>`-Starttags eines
+OOB-Updates am Ende der Antwort (Foster-Parenting-Regel), behält aber deren
+KINDER (z.B. eine Mehrfachauswahl-Checkbox), die dann lose im Ziel-Container
+landen - ohne jede Fehlermeldung. Der robuste Fix in beiden Richtungen: eine
+OOB-`<tr>`, die nicht am Anfang einer Antwort steht, in ein eigenes, verstecktes
+`<table><tbody>...</tbody></table>` einbetten (macht sie unabhängig vom Rest
+der Antwort gültig geparstes Tabellen-Markup); wenn umgekehrt die Antwort
+bereits mit einer echten `<tr>` beginnt (löst htmx' Auto-Wrap aus) und
+zusätzlich ein andersartiges OOB-Element angehängt werden soll, dieses
+stattdessen ebenfalls als `<tr>` rendern (der Tag eines `hx-swap-oob="delete"`-
+Platzhalters ist für dessen Wirkung irrelevant, nur ID und Attribut zählen) -
+so bleibt die Antwort durchgehend aus gleichartigen Elementen zusammengesetzt.
 
 Ein Datumsbereich-Filter (Von/Bis, zwei `<input type="date">`) filtert
 zusätzlich serverseitig (wirkt sich also auch auf Y aus) und ist mit den
@@ -627,11 +680,18 @@ gemeldete Seite schlicht aus dem Browser-Cache einer älteren Version kam
 Check tatsächlich für JEDE gemeldete Seite einzeln zu machen statt pauschal
 "wird schon wieder Cache sein" anzunehmen.
 
-Natives `<dialog>` (z.B. "Übersprungene Duplikate" beim CSV-Import) wird
-über `.showModal()` geöffnet; Tailwinds Preflight setzt `margin: 0` auf
-praktisch alle Elemente und hebt damit die native `margin: auto`-Zentrierung
-von `<dialog>` auf - dagegen steht in `input.css` eine explizite
-`dialog { margin: auto; }`-Regel.
+Natives `<dialog>` (z.B. "Übersprungene Duplikate" beim CSV-Import) wird über
+`.showModal()` geöffnet. Die ursprüngliche Zentrierungslösung war eine einzige
+`dialog { margin: auto; }`-Regel (gegen Tailwinds Preflight, das `margin: 0`
+auf praktisch alle Elemente setzt) - das zentrierte aber nur kurze Dialoge
+zuverlässig; inhaltsreichere Dialoge (Kategorie-Mehrfachanlage, Export/Import,
+Buchungsdetails) klebten trotzdem oben am Viewport (`top: 0` statt zentriert),
+vermutlich ein Zusammenspiel aus `position: fixed; inset: 0` (nativer
+`dialog:modal`-Stil) mit einer inhaltsabhängigen `fit-content`-Höhe, das nicht
+in jedem Fall zuverlässig funktioniert. Jetzt stattdessen `position: fixed;
+top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0;` - eine von
+der Dialoghöhe komplett unabhängige, unzweideutige Zentrierungstechnik, per
+Playwright an fünf verschieden hohen Dialogen (172px bis 578px) verifiziert.
 
 ## Sortier-/durchsuchbare Tabellen
 

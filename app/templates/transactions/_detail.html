@@ -1,67 +1,158 @@
-{% macro similar_table(items) %}
-<div class="mt-2 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
-  <table class="table-base">
-    <thead>
-      <tr>
-        <th>Datum</th>
-        <th class="text-right">Betrag</th>
-        <th>Verwendungszweck</th>
-        <th>Kategorie</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for m in items %}
-      <tr
-        class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50"
-        onclick="hafinOpenDialog('/transactions/{{ m.txn.id }}/details', 'transaction-detail-dialog', 'transaction-detail-dialog-content')"
-      >
-        <td class="whitespace-nowrap font-mono text-xs">{{ m.txn.booking_date.isoformat() }}</td>
-        <td class="whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if m.txn.amount > 0 else '' }}">
-          {{ m.txn.amount|format_currency }}
-        </td>
-        <td class="text-xs text-gray-500 dark:text-gray-400">{{ m.txn.purpose or m.txn.payee }}</td>
-        <td class="text-xs">{{ m.category.name if m.category else "–" }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+{% from "_table.html" import table_search, sort_th %}
+
+{% macro similar_table(list_id, items) %}
+<div id="{{ list_id }}" class="mt-2">
+  <div class="mb-2">
+    {{ table_search("Treffer durchsuchen…") }}
+  </div>
+  <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
+    <table class="table-base">
+      <thead>
+        <tr>
+          {{ sort_th("Datum", "date") }}
+          {{ sort_th("Betrag", "amount", "text-right") }}
+          {{ sort_th("Verwendungszweck", "purpose") }}
+          {{ sort_th("Kategorie", "category") }}
+        </tr>
+      </thead>
+      <tbody class="list">
+        {% for m in items %}
+        <tr
+          class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50"
+          onclick="hafinOpenDialog('/transactions/{{ m.txn.id }}/details', 'transaction-detail-dialog', 'transaction-detail-dialog-content')"
+        >
+          <td class="date whitespace-nowrap font-mono text-xs">{{ m.txn.booking_date.isoformat() }}</td>
+          <td class="amount whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if m.txn.amount > 0 else '' }}">
+            {{ m.txn.amount|format_currency }}
+          </td>
+          <td class="purpose text-xs text-gray-500 dark:text-gray-400">{{ m.txn.purpose or m.txn.payee }}</td>
+          <td class="category text-xs">{{ m.category.name if m.category else "–" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+<script>
+  hafinInitTable("{{ list_id }}", ["date", "amount", "purpose", "category"]);
+</script>
 {% endmacro %}
 
 <h3 class="text-base font-semibold">Buchungsdetails</h3>
-<dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
-  <div>
-    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Datum</dt>
-    <dd class="mt-0.5 font-mono">{{ txn.booking_date.isoformat() }}</dd>
+
+<div id="detail-view-section" class="{{ 'hidden' if edit_open else '' }}">
+  <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Datum</dt>
+      <dd class="mt-0.5 font-mono">{{ txn.booking_date.isoformat() }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Konto</dt>
+      <dd class="mt-0.5">{{ account.display_name if account else "–" }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Betrag</dt>
+      <dd class="mt-0.5 font-mono {{ 'text-green-600 dark:text-green-400' if txn.amount > 0 else '' }}">{{ txn.amount|format_currency }}</dd>
+    </div>
+    <div class="col-span-2 sm:col-span-3">
+      <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Auftraggeber/Empfänger</dt>
+      <dd class="mt-0.5">{{ txn.payee }}</dd>
+    </div>
+    <div class="col-span-2 sm:col-span-3">
+      <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Verwendungszweck</dt>
+      <dd class="mt-0.5">{{ txn.purpose or "–" }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Kategorie</dt>
+      <dd class="mt-0.5">{{ category.name if category else "–" }}</dd>
+    </div>
+  </dl>
+
+  <div class="mt-3">
+    {% if txn.counter_transaction_id %}
+    <p class="text-xs text-gray-500 dark:text-gray-400">
+      Diese Buchung ist Teil einer Umbuchung - Verknüpfung erst in der Buchungsliste aufheben, um sie zu bearbeiten.
+    </p>
+    {% else %}
+    <button type="button" class="btn-outline !px-3 !py-1.5 !text-xs" onclick="hafinConfirmEditTransaction()">
+      Bearbeiten
+    </button>
+    {% endif %}
   </div>
-  <div>
-    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Konto</dt>
-    <dd class="mt-0.5">{{ account.display_name if account else "–" }}</dd>
+</div>
+
+{% if not txn.counter_transaction_id %}
+<form
+  id="detail-edit-form"
+  class="{{ '' if edit_open else 'hidden' }} mt-4 space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-800"
+  hx-post="/transactions/{{ txn.id }}/edit"
+  hx-target="#transaction-detail-dialog-content"
+  hx-swap="innerHTML"
+>
+  {% if edit_error %}
+  <div class="alert-error">{{ edit_error }}</div>
+  {% endif %}
+  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <div>
+      <label class="form-label">Datum</label>
+      <input type="date" name="booking_date" required class="form-input"
+             value="{{ edit_values.booking_date if edit_values else txn.booking_date.isoformat() }}" />
+    </div>
+    <div>
+      <label class="form-label">Betrag</label>
+      <input type="number" step="0.01" name="amount" required class="form-input"
+             value="{{ edit_values.amount if edit_values else '%.2f'|format(txn.amount) }}" />
+    </div>
+    <div>
+      <label class="form-label">Konto</label>
+      <select name="account_id" required data-searchable class="form-input">
+        {% for acc in accounts %}
+        <option value="{{ acc.id }}" {% if (edit_values.account_id if edit_values else txn.account_id)|string == acc.id|string %}selected{% endif %}>
+          {{ acc.display_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="form-label">Auftraggeber/Empfänger</label>
+      <input type="text" name="payee" required class="form-input"
+             value="{{ edit_values.payee if edit_values else txn.payee }}" />
+    </div>
+    <div class="sm:col-span-2">
+      <label class="form-label">Verwendungszweck</label>
+      <input type="text" name="purpose" class="form-input"
+             value="{{ edit_values.purpose if edit_values else (txn.purpose or '') }}" />
+    </div>
   </div>
-  <div>
-    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Betrag</dt>
-    <dd class="mt-0.5 font-mono {{ 'text-green-600 dark:text-green-400' if txn.amount > 0 else '' }}">{{ txn.amount|format_currency }}</dd>
+  <div class="flex gap-3">
+    <button type="submit" class="btn-primary">Speichern</button>
+    <button type="button" class="btn-outline" onclick="hafinCancelEditTransaction()">Abbrechen</button>
   </div>
-  <div class="col-span-2 sm:col-span-3">
-    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Auftraggeber/Empfänger</dt>
-    <dd class="mt-0.5">{{ txn.payee }}</dd>
-  </div>
-  <div class="col-span-2 sm:col-span-3">
-    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Verwendungszweck</dt>
-    <dd class="mt-0.5">{{ txn.purpose or "–" }}</dd>
-  </div>
-  <div>
-    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Kategorie</dt>
-    <dd class="mt-0.5">{{ category.name if category else "–" }}</dd>
-  </div>
-</dl>
+</form>
+{% endif %}
+
+<div class="mt-6 border-t border-gray-200 pt-4 dark:border-gray-800">
+  <h4 class="text-sm font-semibold">Kommentar</h4>
+  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+    Rein internes Notizfeld, unabhängig von der Duplikat-Erkennung.
+  </p>
+  <form
+    class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-start"
+    hx-post="/transactions/{{ txn.id }}/comment"
+    hx-target="#transaction-detail-dialog-content"
+    hx-swap="innerHTML"
+  >
+    <textarea name="comment" rows="2" class="form-input flex-1" placeholder="Notiz hinzufügen…">{{ txn.comment or "" }}</textarea>
+    <button type="submit" class="btn-outline !px-3 !py-1.5 !text-xs sm:mt-0">Speichern</button>
+  </form>
+</div>
 
 <div class="mt-6 border-t border-gray-200 pt-4 dark:border-gray-800">
   <h4 class="text-sm font-semibold">
     Ähnliche Zahlungen – Exakte Treffer{% if exact_total %} ({{ exact_total }}){% endif %}
   </h4>
   {% if exact %}
-  {{ similar_table(exact) }}
+  {{ similar_table("similar-exact-table", exact) }}
   {% if exact_total > exact|length %}
   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Zeigt {{ exact|length }} von {{ exact_total }}.</p>
   {% endif %}
@@ -75,7 +166,7 @@
     Ähnliche Zahlungen – Ähnliche Treffer{% if similar_total %} ({{ similar_total }}){% endif %}
   </h4>
   {% if similar %}
-  {{ similar_table(similar) }}
+  {{ similar_table("similar-similar-table", similar) }}
   {% if similar_total > similar|length %}
   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Zeigt {{ similar|length }} von {{ similar_total }}.</p>
   {% endif %}

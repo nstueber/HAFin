@@ -192,10 +192,18 @@
     @apply border-0 bg-transparent p-0 shadow-none outline-none ring-0 dark:text-gray-100;
   }
 
-  /* Natives <dialog> zentrieren: Tailwinds Preflight setzt margin:0 auf * und hebt damit
-     die native margin:auto-Zentrierung von <dialog> beim Öffnen per showModal() auf. */
+  /* Natives <dialog> zentrieren: die ursprüngliche Lösung (nur `margin: auto`, gegen
+     Tailwinds Preflight, das `margin: 0` auf * setzt) zentrierte zuverlässig NUR
+     kurze Dialoge (z.B. Konto-/Kategorie-Löschen-Bestätigung) - bei saemtlichen
+     inhaltsreicheren Dialogen (Neue-Kategorie-Mehrfachanlage, Export/Import,
+     Buchungsdetails/Ähnliche-Zahlungen) klebte der Dialog trotzdem oben am Viewport
+     (`top: 0` statt zentriert), obwohl reichlich Platz vorhanden war - vermutlich eine
+     Browser-Eigenheit beim Zusammenspiel von `position: fixed; inset: 0` (nativer
+     `dialog:modal`-Stil) mit einer inhaltsabhängigen `fit-content`-Höhe. Robuster und
+     unabhängig von der Höhe: explizite `top/left: 50%` + `translate(-50%, -50%)` statt
+     margin-basierter Zentrierung - funktioniert für jede Dialoggröße gleich zuverlässig. */
   dialog {
-    @apply m-auto;
+    @apply fixed left-1/2 top-1/2 m-0 -translate-x-1/2 -translate-y-1/2;
   }
 
   /* Mehrfachauswahl-Checkbox-Spalte (Buchungsliste): standardmäßig ausgeblendet,

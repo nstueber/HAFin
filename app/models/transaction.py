@@ -35,4 +35,6 @@ class Transaction(SQLModel, table=True):
 
     category_id: Optional[int] = Field(default=None, foreign_key="category.id", index=True)
 
+    comment: Optional[str] = None
+
     created_at: datetime = Field(default_factory=datetime.utcnow)

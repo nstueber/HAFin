@@ -671,8 +671,16 @@ def link_form(
 
 
 def _suggestion_card_oob_delete(transaction_id: int, counter_transaction_id: int) -> str:
+    # <tr> statt <div>: dieser Platzhalter wird nie selbst angezeigt (hx-swap-oob="delete"
+    # findet und entfernt das ECHTE Element mit dieser ID anhand der ID, unabhaengig vom
+    # eigenen Tag des Platzhalters) - aber der Aufrufer (confirm_transfer) beginnt seine
+    # Antwort mit einer echten <tr>, wodurch htmx die GESAMTE Antwort automatisch in
+    # <table><tbody> einwickelt; ein <div> an dieser Stelle wuerde dort per Foster-
+    # Parenting aus dem tbody herausgeloest und ging beim Extrahieren des Fragments
+    # verloren (leise, ohne Fehler) - mit <tr> bleibt die Antwort durchgehend aus
+    # gleichartigen Elementen zusammengesetzt und wird zuverlaessig geparst.
     a_id, b_id = sorted((transaction_id, counter_transaction_id))
-    return f'<div id="suggestion-{a_id}-{b_id}" hx-swap-oob="delete"></div>'
+    return f'<tr id="suggestion-{a_id}-{b_id}" hx-swap-oob="delete"></tr>'
 
 
 @router.post("/{transaction_id}/confirm-transfer", response_class=HTMLResponse)
@@ -860,8 +868,41 @@ def save_splits(
     html = templates.env.get_template("transactions/_split_form.html").render(
         **_split_form_context(session, txn)
     )
-    html += _render_row_html(session, txn, oob=True)
+    # Die Antwort geht in #split-dialog-content (ein <div>, kein Tabellenkontext) -
+    # ein nackter <tr hx-swap-oob> waere hier vom Browser NICHT als Tabellenzeile
+    # geparst worden (htmx wrapt eine Antwort nur dann automatisch in <table><tbody>,
+    # wenn sie komplett mit "<tr" beginnt; hier beginnt sie mit dem Split-Formular).
+    # Ohne eigenen Table-Kontext verwirft der Browser die <tr>/<td>-Starttags beim
+    # Parsen (Foster-Parenting-Regel) und haengt deren KINDER (Kategorie-Select,
+    # "Aufteilen bearbeiten"-Link, Mehrfachauswahl-Checkbox, ...) direkt/ungewrapped
+    # in den Dialog - genau das im Screenshot gemeldete Symptom, inkl. der Checkbox,
+    # die dadurch versehentlich am globalen Mehrfachauswahl-Zustand haengt. Fix: die
+    # OOB-Zeile in ein eigenes, verstecktes <table><tbody> einbetten, damit sie
+    # unabhaengig vom Rest der Antwort als gueltige Tabellenzeile geparst wird; htmx
+    # entfernt sie beim OOB-Swap ohnehin aus dem Fragment, das leere Table-Geruest
+    # bleibt unsichtbar (display:none) zurueck.
+    html += f'<table style="display:none"><tbody>{_render_row_html(session, txn, oob=True)}</tbody></table>'
     return HTMLResponse(content=html)
+
+
+def _detail_context(
+    session: Session,
+    txn: Transaction,
+    edit_open: bool = False,
+    edit_error: str = "",
+    edit_values: Optional[dict] = None,
+) -> dict:
+    accounts_by_id, categories_by_id = _lookup_dicts(session)
+    return {
+        "txn": txn,
+        "account": accounts_by_id.get(txn.account_id),
+        "category": categories_by_id.get(txn.category_id),
+        "accounts": sorted(accounts_by_id.values(), key=lambda a: a.display_name),
+        "edit_open": edit_open,
+        "edit_error": edit_error,
+        "edit_values": edit_values,
+        **_similar_payments(session, txn, categories_by_id),
+    }
 
 
 @router.get("/{transaction_id}/details", response_class=HTMLResponse)
@@ -869,17 +910,95 @@ def transaction_details(
     request: Request, transaction_id: int, session: Session = Depends(get_session)
 ) -> HTMLResponse:
     txn = session.get(Transaction, transaction_id)
-    accounts_by_id, categories_by_id = _lookup_dicts(session)
     return templates.TemplateResponse(
         request=request,
         name="transactions/_detail.html",
-        context={
-            "txn": txn,
-            "account": accounts_by_id.get(txn.account_id),
-            "category": categories_by_id.get(txn.category_id),
-            **_similar_payments(session, txn, categories_by_id),
-        },
+        context=_detail_context(session, txn),
     )
+
+
+@router.post("/{transaction_id}/comment", response_class=HTMLResponse)
+def update_transaction_comment(
+    request: Request,
+    transaction_id: int,
+    comment: str = Form(""),
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    txn = session.get(Transaction, transaction_id)
+    txn.comment = comment.strip() or None
+    session.add(txn)
+    session.commit()
+    session.refresh(txn)
+    return templates.TemplateResponse(
+        request=request,
+        name="transactions/_detail.html",
+        context=_detail_context(session, txn),
+    )
+
+
+@router.post("/{transaction_id}/edit", response_class=HTMLResponse)
+def update_transaction(
+    request: Request,
+    transaction_id: int,
+    booking_date: str = Form(...),
+    payee: str = Form(...),
+    purpose: str = Form(""),
+    amount: str = Form(...),
+    account_id: int = Form(...),
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    txn = session.get(Transaction, transaction_id)
+    submitted = {
+        "booking_date": booking_date,
+        "payee": payee,
+        "purpose": purpose,
+        "amount": amount,
+        "account_id": account_id,
+    }
+
+    def _reject(message: str) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request=request,
+            name="transactions/_detail.html",
+            context=_detail_context(session, txn, edit_open=True, edit_error=message, edit_values=submitted),
+            status_code=400,
+        )
+
+    # Verknuepfte Umbuchungen haben ein festes Betrags-/Konto-Verhaeltnis zur
+    # Gegenbuchung (exakt entgegengesetzter Betrag, unterschiedliches Konto) - ein
+    # freies Bearbeiten koennte das unbemerkt kaputt machen. Erst Verknuepfung
+    # aufheben, dann bearbeiten (dieselbe Einschraenkung wie fuer die Kategorie).
+    if txn.counter_transaction_id is not None:
+        return _reject("Diese Buchung ist Teil einer Umbuchung - Verknüpfung erst aufheben, um sie zu bearbeiten.")
+
+    parsed_date = _parse_date(booking_date)
+    if parsed_date is None:
+        return _reject("Ungültiges Datum.")
+    try:
+        parsed_amount = float(amount.strip().replace(",", "."))
+    except ValueError:
+        return _reject("Ungültiger Betrag.")
+    if not payee.strip():
+        return _reject("Auftraggeber/Empfänger darf nicht leer sein.")
+    if session.get(Account, account_id) is None:
+        return _reject("Unbekanntes Konto.")
+
+    txn.booking_date = parsed_date
+    txn.payee = payee.strip()
+    txn.purpose = purpose.strip() or None
+    txn.amount = parsed_amount
+    txn.account_id = account_id
+    txn.transaction_type = TransactionType.EINGANG if parsed_amount > 0 else TransactionType.AUSGANG
+    session.add(txn)
+    session.commit()
+    session.refresh(txn)
+
+    html = templates.env.get_template("transactions/_detail.html").render(**_detail_context(session, txn))
+    # Siehe Kommentar in save_splits() - Haupttabellenzeile per OOB aktualisieren,
+    # dafuer in ein eigenes <table><tbody> gewickelt, da die Antwort insgesamt
+    # nicht mit einer <tr> beginnt (Ziel ist #transaction-detail-dialog-content).
+    html += f'<table style="display:none"><tbody>{_render_row_html(session, txn, oob=True)}</tbody></table>'
+    return HTMLResponse(content=html)
 
 
 @router.post("/{transaction_id}/delete", response_class=HTMLResponse)
