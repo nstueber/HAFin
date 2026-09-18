@@ -1,0 +1,89 @@
+{% macro similar_table(items) %}
+<div class="mt-2 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
+  <table class="table-base">
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th class="text-right">Betrag</th>
+        <th>Verwendungszweck</th>
+        <th>Kategorie</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in items %}
+      <tr
+        class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50"
+        onclick="hafinOpenDialog('/transactions/{{ m.txn.id }}/details', 'transaction-detail-dialog', 'transaction-detail-dialog-content')"
+      >
+        <td class="whitespace-nowrap font-mono text-xs">{{ m.txn.booking_date.isoformat() }}</td>
+        <td class="whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if m.txn.amount > 0 else '' }}">
+          {{ m.txn.amount|format_currency }}
+        </td>
+        <td class="text-xs text-gray-500 dark:text-gray-400">{{ m.txn.purpose or m.txn.payee }}</td>
+        <td class="text-xs">{{ m.category.name if m.category else "–" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+<h3 class="text-base font-semibold">Buchungsdetails</h3>
+<dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+  <div>
+    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Datum</dt>
+    <dd class="mt-0.5 font-mono">{{ txn.booking_date.isoformat() }}</dd>
+  </div>
+  <div>
+    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Konto</dt>
+    <dd class="mt-0.5">{{ account.display_name if account else "–" }}</dd>
+  </div>
+  <div>
+    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Betrag</dt>
+    <dd class="mt-0.5 font-mono {{ 'text-green-600 dark:text-green-400' if txn.amount > 0 else '' }}">{{ txn.amount|format_currency }}</dd>
+  </div>
+  <div class="col-span-2 sm:col-span-3">
+    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Auftraggeber/Empfänger</dt>
+    <dd class="mt-0.5">{{ txn.payee }}</dd>
+  </div>
+  <div class="col-span-2 sm:col-span-3">
+    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Verwendungszweck</dt>
+    <dd class="mt-0.5">{{ txn.purpose or "–" }}</dd>
+  </div>
+  <div>
+    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Kategorie</dt>
+    <dd class="mt-0.5">{{ category.name if category else "–" }}</dd>
+  </div>
+</dl>
+
+<div class="mt-6 border-t border-gray-200 pt-4 dark:border-gray-800">
+  <h4 class="text-sm font-semibold">
+    Ähnliche Zahlungen – Exakte Treffer{% if exact_total %} ({{ exact_total }}){% endif %}
+  </h4>
+  {% if exact %}
+  {{ similar_table(exact) }}
+  {% if exact_total > exact|length %}
+  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Zeigt {{ exact|length }} von {{ exact_total }}.</p>
+  {% endif %}
+  {% else %}
+  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Keine exakten Treffer (identischer Betrag und Verwendungszweck).</p>
+  {% endif %}
+</div>
+
+<div class="mt-6 border-t border-gray-200 pt-4 dark:border-gray-800">
+  <h4 class="text-sm font-semibold">
+    Ähnliche Zahlungen – Ähnliche Treffer{% if similar_total %} ({{ similar_total }}){% endif %}
+  </h4>
+  {% if similar %}
+  {{ similar_table(similar) }}
+  {% if similar_total > similar|length %}
+  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Zeigt {{ similar|length }} von {{ similar_total }}.</p>
+  {% endif %}
+  {% else %}
+  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Keine ähnlichen Treffer (gleicher Betrag oder ähnlicher Verwendungszweck).</p>
+  {% endif %}
+</div>
+
+<div class="mt-6 flex justify-end">
+  <button type="button" class="btn-outline" onclick="document.getElementById('transaction-detail-dialog').close()">Schließen</button>
+</div>

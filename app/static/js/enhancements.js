@@ -141,9 +141,10 @@
 
   document.addEventListener("DOMContentLoaded", initSearchableSelects);
 
-  // Mehrfachauswahl (Buchungsliste): Toggle-Button schaltet die "show-ms"-Klasse
-  // auf der Tabelle um (steuert die Sichtbarkeit der Checkbox-Spalte per CSS,
-  // siehe .ms-cell in input.css). Aktionsleiste + "Kategorie zuweisen"-Button
+  // Mehrfachauswahl (Buchungsliste): Checkbox im "Ansicht anpassen"-Optionsmenue
+  // schaltet ueber den generischen [data-toggle-class]-Handler (weiter unten) die
+  // "show-ms"-Klasse auf der Tabelle um (steuert die Sichtbarkeit der Checkbox-Spalte
+  // per CSS, siehe .ms-cell in input.css). Aktionsleiste + "Kategorie zuweisen"-Button
   // reagieren rein clientseitig auf die aktuell angehakten Checkboxen.
   function updateBulkAssignButton(checkedCount) {
     var btn = document.getElementById("bulk-assign-btn");
@@ -172,21 +173,41 @@
     updateBulkAssignButton(checked.length);
   }
 
-  // Dieselben Klassen wie der aktive Zustand des "Nur unkategorisierte"-Buttons
-  // (siehe transactions/list.html), damit beide Toggle-Buttons konsistent aussehen.
-  var MULTISELECT_ACTIVE_CLASSES = ["!border-accent", "!text-accent"];
-
-  document.addEventListener("click", function (e) {
-    var toggle = e.target.closest && e.target.closest("[data-multiselect-toggle]");
-    if (!toggle) return;
-    var table = document.querySelector(toggle.getAttribute("data-multiselect-toggle"));
-    if (!table) return;
-    table.classList.toggle("show-ms");
-    var active = table.classList.contains("show-ms");
-    toggle.classList.toggle(MULTISELECT_ACTIVE_CLASSES[0], active);
-    toggle.classList.toggle(MULTISELECT_ACTIVE_CLASSES[1], active);
-    if (!active) {
-      // Modus verlassen: Auswahl zuruecksetzen, Aktionsleiste ausblenden.
+  // Zentrales "Ansicht anpassen"-Optionsmenue (z.B. Buchungsliste, siehe transactions/
+  // list.html): jede Checkbox mit [data-toggle-class] + [data-toggle-target] schaltet
+  // beim Aendern eine CSS-Klasse auf dem referenzierten Zielelement um (z.B. "show-ms"
+  // fuer die Mehrfachauswahl-Checkbox-Spalte, "show-transfer-col" fuer die Umbuchungs-
+  // spalte) - weitere Optionen lassen sich so ergaenzen, ohne dass der Tabellen-Header
+  // mit immer mehr eigenen Buttons zuwaechst. [data-persist-key] merkt den Zustand
+  // zusaetzlich fuer die Dauer der Session (sessionStorage) - bewusst KEIN dauerhaftes
+  // serverseitiges Speichern, das ist fuer reine Anzeige-Praeferenzen nicht noetig.
+  document.addEventListener("change", function (e) {
+    if (e.target.matches && e.target.matches(".ms-checkbox")) {
+      updateBulkBar();
+      return;
+    }
+    if (e.target.id === "bulk-category-select") {
+      updateBulkAssignButton();
+      return;
+    }
+    var opt = e.target.closest && e.target.closest("[data-toggle-class]");
+    if (!opt) return;
+    var target = document.querySelector(opt.getAttribute("data-toggle-target"));
+    var toggleClass = opt.getAttribute("data-toggle-class");
+    if (target) {
+      target.classList.toggle(toggleClass, opt.checked);
+    }
+    var persistKey = opt.getAttribute("data-persist-key");
+    if (persistKey) {
+      try {
+        sessionStorage.setItem(persistKey, opt.checked ? "1" : "0");
+      } catch (err) {
+        // sessionStorage evtl. nicht verfuegbar (z.B. privater Modus) - Optionsstatus
+        // geht dann beim Neuladen verloren, Grundfunktion bleibt unberuehrt.
+      }
+    }
+    if (toggleClass === "show-ms" && !opt.checked) {
+      // Mehrfachauswahl-Modus verlassen: Auswahl zuruecksetzen, Aktionsleiste ausblenden.
       document.querySelectorAll(".ms-checkbox:checked").forEach(function (cb) {
         cb.checked = false;
       });
@@ -194,11 +215,55 @@
     }
   });
 
-  document.addEventListener("change", function (e) {
-    if (e.target.matches && e.target.matches(".ms-checkbox")) {
-      updateBulkBar();
-    } else if (e.target.id === "bulk-category-select") {
-      updateBulkAssignButton();
+  // Stellt beim Laden der Seite alle [data-persist-key]-Checkboxen (und die davon
+  // abhaengige CSS-Klasse) aus sessionStorage wieder her, z.B. "Umbuchungsspalte
+  // anzeigen" bleibt so fuer die Dauer der Session aktiv.
+  function restorePersistedOptions() {
+    document.querySelectorAll("[data-persist-key]").forEach(function (opt) {
+      var stored;
+      try {
+        stored = sessionStorage.getItem(opt.getAttribute("data-persist-key"));
+      } catch (err) {
+        stored = null;
+      }
+      if (stored === "1" && !opt.checked) {
+        opt.checked = true;
+        opt.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+  }
+  document.addEventListener("DOMContentLoaded", restorePersistedOptions);
+
+  // Generisches Dropdown-Panel (aktuell das "Ansicht anpassen"-Optionsmenue): Klick auf
+  // einen [data-dropdown-toggle]-Button oeffnet/schliesst das per CSS-Selektor referenzierte
+  // Panel (Klasse "hafin-dropdown-panel"); Klick ausserhalb oder Escape schliesst es wieder.
+  // Generisch statt fest an ein einzelnes Menue gebunden, damit sich weitere Dropdowns
+  // (z.B. spaeter auf anderen Seiten) ohne neuen JS-Code ergaenzen lassen.
+  document.addEventListener("click", function (e) {
+    var toggle = e.target.closest && e.target.closest("[data-dropdown-toggle]");
+    if (toggle) {
+      var panel = document.querySelector(toggle.getAttribute("data-dropdown-toggle"));
+      if (panel) {
+        var willOpen = panel.classList.contains("hidden");
+        document.querySelectorAll(".hafin-dropdown-panel").forEach(function (p) {
+          p.classList.add("hidden");
+        });
+        panel.classList.toggle("hidden", !willOpen);
+        toggle.setAttribute("aria-expanded", willOpen ? "true" : "false");
+      }
+      return;
+    }
+    if (!(e.target.closest && e.target.closest(".hafin-dropdown-panel"))) {
+      document.querySelectorAll(".hafin-dropdown-panel").forEach(function (p) {
+        p.classList.add("hidden");
+      });
+    }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      document.querySelectorAll(".hafin-dropdown-panel").forEach(function (p) {
+        p.classList.add("hidden");
+      });
     }
   });
 

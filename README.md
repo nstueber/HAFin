@@ -130,9 +130,24 @@ komplett neu vom Server zu laden.
 
 ## Kategorien & Kategorisierung
 
-Unter „Kategorien" lassen sich zweistufige Ober-/Unterkategorien anlegen
-("Neue Kategorie anlegen" steht bewusst ganz oben auf der Seite, ohne Scrollen
-erreichbar), umbenennen und umhängen (Oberkategorie ändern). Beim Löschen wird
+Unter „Kategorien" (wie unter „Konten") folgt das Anlegen dem einheitlichen
+Muster "Button oben rechts öffnet ein `.modal-wide`-`<dialog>`" statt eines
+festen Inline-Formulars auf der Seite - Button+Formular blieben so bei
+größer werdenden Formularen (Export/Import kam als eigenes Modal hinzu) ohne
+wachsende Seite erreichbar. Das "Neue Kategorie"-Modal erlaubt zusätzlich
+eine Mehrfachanlage: ein "+"-Icon am Zeilenende hängt eine weitere
+Name+Oberkategorie-Zeile an (rein clientseitig per `<template>`-Klonen einer
+unausgefüllten Vorlagenzeile, analog zum Bargeld-Aufteilen-Formular), ein
+"×" entfernt eine Zeile wieder (bei der ersten Zeile per `invisible` statt
+`hidden` ausgeblendet, damit die Ausrichtung der übrigen Zeilen nicht
+springt). Serverseitig nimmt `POST /categories` jetzt Listen entgegen
+(`name: list[str]`, `parent_id: list[str]`, FastAPI/Starlette parst mehrere
+gleichnamige Formularfelder automatisch dazu) und legt alle nicht-leeren
+Zeilen in einem Request an - eine einzelne Zeile ist einfach der
+Sonderfall "Liste der Länge 1". Export/Import (JSON) sitzt ebenfalls in
+einem eigenen Modal statt als Inline-Bereich unten auf der Seite.
+
+Kategorien lassen sich umbenennen und umhängen (Oberkategorie ändern). Beim Löschen wird
 zunächst ein Bestätigungsdialog (natives `<dialog>`, lazy per htmx-GET befüllt)
 mit den konkreten Konsequenzen gezeigt:
 - Hat die Kategorie Unterkategorien, werden diese beim Löschen zu
@@ -175,12 +190,31 @@ kurzzeitig, wurde aber auf Nutzerwunsch wieder entfernt, weil es wie ein
 störendes Springen der Liste wirkte) - die Liste synchronisiert sich erst
 wieder beim nächsten regulären Reload/Filterwechsel.
 
-**Mehrfachauswahl**: Button „Mehrfachauswahl" oberhalb der Liste blendet eine
-Checkbox-Spalte ein (rein clientseitig per CSS-Klassen-Toggle, siehe
-`.ms-cell`/`.show-ms` in `input.css` - keine serverseitige Bedingung pro
-Zeile nötig) und bekommt dabei denselben aktiv-Style wie der „Nur
-unkategorisierte"-Button (`!border-accent !text-accent`), solange der Modus
-läuft. Sobald mindestens eine Buchung angehakt ist, erscheint eine
+**"Ansicht"-Optionsmenü**: Statt für jede optionale Anzeige-Funktion einen
+weiteren Button in den Tabellen-Header zu packen, sitzt ein Zahnrad-Button
+("Ansicht") mit einem Dropdown-Panel (`.hafin-dropdown-panel`, generisch über
+`[data-dropdown-toggle]`/`[data-dropdown-panel]` in `enhancements.js` - Klick
+außerhalb oder Escape schließt es wieder) im Header. Jede Option darin ist
+eine Checkbox mit `[data-toggle-class]`+`[data-toggle-target]`, die beim
+Ändern eine CSS-Klasse auf dem referenzierten Element umschaltet - eine
+weitere Option lässt sich also ergänzen, ohne neuen JS-Code zu schreiben,
+nur eine weitere Checkbox mit den passenden `data-*`-Attributen. Optional
+merkt `[data-persist-key]` den Zustand für die Dauer der Session in
+`sessionStorage` (bewusst kein serverseitiges Speichern für eine reine
+Anzeige-Präferenz).
+
+Aktuell zwei Optionen:
+- **Mehrfachauswahl aktivieren** (vormals ein eigener Button): blendet eine
+  Checkbox-Spalte ein (rein clientseitig per CSS-Klassen-Toggle, siehe
+  `.ms-cell`/`.show-ms` in `input.css` - keine serverseitige Bedingung pro
+  Zeile nötig).
+- **Umbuchungsspalte anzeigen**: die Spalte mit dem Umbuchungs-Status/der
+  Gegenbuchung ist standardmäßig ausgeblendet (`.transfer-col`/
+  `.show-transfer-col`, gleiches Muster wie `.ms-cell`/`.show-ms`) und wird
+  nur bei aktiviertem Toggle eingeblendet; der Zustand wird per
+  `data-persist-key="hafin-show-transfer-col"` für die Session gemerkt.
+
+Sobald mindestens eine Buchung angehakt ist, erscheint eine
 Aktionsleiste mit Kategorie-Auswahl (Tom Select) und „Kategorie zuweisen"
 (`POST /transactions/bulk-category`, sammelt die angehakten Checkboxen via
 `hx-include`, ohne dass ein umschließendes `<form>` nötig wäre). Bereits
@@ -214,6 +248,52 @@ selbst bleibt unverändert (Betrag, Kategorie "Bargeld") und bekommt nur ein
 jeweils zugewiesenen Kategorie und der Rest weiterhin zu "Bargeld" - macht
 zusammen immer exakt den Original-Betrag, keine Doppelzählung (siehe
 Dashboard-Abschnitt unten).
+
+**Buchung löschen**: Mülleimer-Icon in der neuen "Aktionen"-Spalte am
+Zeilenende, mit nativem `hx-confirm` vor dem eigentlichen Request (`POST
+/transactions/{id}/delete`). Echtes Löschen aus der Datenbank, kein
+Soft-Delete-Konzept vorhanden. Zwei Sonderfälle dabei behandelt:
+- War die Buchung Teil einer bestätigten Umbuchung, bleibt die Gegenbuchung
+  bestehen, verliert aber die Verknüpfung (`counter_transaction_id = None`),
+  den Typ (zurück auf Eingang/Ausgang je nach Vorzeichen) und die dadurch
+  feste Kategorie "Umbuchung" (`category_id = None`) - dieselbe Logik wie bei
+  `unlink-transfer`, nur einseitig (die gelöschte Seite braucht keinen
+  Zustand mehr).
+- Hat die Buchung Bargeld-Splits, werden diese mitgelöscht (Cascade Delete,
+  `TransactionSplit`-Zeilen ohne ihre Original-Buchung wären bedeutungslos).
+
+Die Antwort besteht bewusst ausschließlich aus Out-of-Band-Elementen: die
+gelöschte Zeile per `hx-swap-oob="delete"` (dieselbe Technik wie beim
+Entfernen einer erledigten Umbuchungs-Vorschlagskarte, siehe unten), plus bei
+Bedarf die aktualisierte Gegenbuchungszeile. Das eigentliche `hx-target` ist
+ein neutraler, immer vorhandener Platzhalter-`<div>`
+(`#transaction-action-result`) statt der zu löschenden Zeile selbst - analog
+zum bereits bewährten Muster in `bulk_set_category()`, wo die Antwort ebenso
+komplett aus Out-of-Band-Zeilen besteht und das eigentliche `hx-target` nur
+ein harmloser Sammelpunkt ist. Damit bleibt die Antwort ausschließlich aus
+gleichartigen `<tr>`-Elementen zusammengesetzt und tappt nicht in die unten
+beschriebene htmx-Fragment-Parsing-Falle (Mischung aus rohen `<tr>` und
+andersartigem OOB-Element in derselben Antwort).
+
+**Ähnliche Zahlungen**: Auge-Icon in der "Aktionen"-Spalte öffnet ein
+`.modal-wide`-Detail-Dialog (`GET /transactions/{id}/details`) mit den
+Kerndaten der Buchung sowie zwei getrennten Trefferlisten (je auf die letzten
+10 begrenzt, mit Hinweis bei mehr vorhandenen):
+- **Exakte Treffer**: identischer Betrag UND identischer Verwendungszweck
+  (ersatzweise Auftraggeber/Empfänger, falls kein Verwendungszweck gesetzt
+  ist) - kontoübergreifend.
+- **Ähnliche Treffer**: identischer Betrag ODER ähnlicher Verwendungszweck,
+  wobei "ähnlich" bewusst simpel über `difflib.SequenceMatcher.ratio()`
+  (Standardbibliothek, Schwellwert 0.6) statt einer echten
+  Levenshtein-Bibliothek ermittelt wird - für eine Vorschlagsliste ohne
+  automatisches Matching reicht das. Bereits als exakter Treffer gezählte
+  Buchungen tauchen nicht zusätzlich hier auf.
+
+Jede Trefferzeile ist klickbar und öffnet wiederum denselben Detail-Dialog für
+die angeklickte Buchung (statt zu versuchen, die Hauptliste zu einer ggf. gar
+nicht geladenen Zeile zu scrollen/filtern - robuster, da unabhängig davon, ob
+die Zielbuchung gerade im 200er-Limit oder einem aktiven Suchergebnis sichtbar
+ist).
 
 ## Suche, Negativsuche und Datumsfilter in der Buchungsliste
 
@@ -521,22 +601,31 @@ sichtbaren Bereich mitscrollen, da beide sonst nur gewöhnliche Kinder
 desselben scrollenden Flex-Containers wären.
 
 Formular-/Einzelkarten-Seiten (Konto/Kategorie/Mapping-Profil bearbeiten,
-CSV-Import, Import-Ergebnis) nutzen einheitlich `.page-narrow`
-(`mx-auto max-w-2xl`) bzw. für inhaltsreichere Seiten wie den
-Mapping-Profil-Wizard `.page-wide` (`mx-auto max-w-4xl`), zusätzlich zur
-`.card`-Klasse - damit sind alle diese Seiten konsequent zentriert statt
-pro Seite unterschiedlich breit/linksbündig. Listen-/Tabellenseiten nutzen
-weiterhin die volle Breite von `<main>` ohne diese Klassen. Für Dialoge, die
-eine mehrspaltige Tabelle statt eines einfachen Formulars zeigen
-("Übersprungene Duplikate" beim CSV-Import, Dashboard-Drilldown), gibt es
-zusätzlich `.modal-wide` (`mx-auto w-[90vw] max-w-4xl`) als eigene, deutlich
-breitere Klasse - eine gemeinsame Stelle statt die Breite pro Dialog einzeln
-zu setzen. Bei einer erneuten Meldung "Seite X ist schmäler als Seite Y":
+Import-Ergebnis) nutzen einheitlich `.page-narrow` (`mx-auto max-w-2xl`) bzw.
+für inhaltsreichere Seiten wie den Mapping-Profil-Wizard `.page-wide`
+(`mx-auto max-w-4xl`), zusätzlich zur `.card`-Klasse - damit sind alle diese
+Seiten konsequent zentriert statt pro Seite unterschiedlich breit/linksbündig.
+Listen-/Tabellenseiten nutzen weiterhin die volle Breite von `<main>` ohne
+diese Klassen. Für Dialoge, die eine mehrspaltige Tabelle statt eines
+einfachen Formulars zeigen ("Übersprungene Duplikate" beim CSV-Import,
+Dashboard-Drilldown, Buchungsdetails/"Ähnliche Zahlungen", die neuen
+"Neues Konto"/"Neue Kategorie"/"Export-Import"-Modals), gibt es zusätzlich
+`.modal-wide` (`mx-auto w-[90vw] max-w-4xl`) als eigene, deutlich breitere
+Klasse - eine gemeinsame Stelle statt die Breite pro Dialog einzeln zu setzen.
+Die eigentliche CSV-Import-Seite (`GET /import`, kein `<dialog>` sondern eine
+gewöhnliche Seite) nutzte lange Zeit fälschlich `.page-narrow` statt
+`.modal-wide`, obwohl sie optisch wie die anderen großen Fenster wirken
+sollte - das war der eine der mehrfach gemeldeten "Fenster ist zu schmal"-
+Fälle, der sich tatsächlich als echte Abweichung bestätigte (auf `.modal-wide`
+umgestellt). Bei einer erneuten Meldung "Seite X ist schmäler als Seite Y":
 zuerst per `grep` prüfen, welche Klasse die betroffene Seite/der Dialog
 TATSÄCHLICH im aktuellen Code trägt, bevor vermutet wird, dass etwas fehlt -
-mehrfach stellte sich in der Vergangenheit heraus, dass die Klassen bereits
-identisch waren und die gemeldete Seite schlicht aus dem Browser-Cache einer
-älteren Version kam (harter Reload/Cache leeren behebt das dann).
+mehrfach (Konto-/Kategorie-bearbeiten-Seiten) stellte sich in der
+Vergangenheit heraus, dass die Klassen bereits identisch waren und die
+gemeldete Seite schlicht aus dem Browser-Cache einer älteren Version kam
+(harter Reload/Cache leeren behebt das dann) - es lohnt sich also, diesen
+Check tatsächlich für JEDE gemeldete Seite einzeln zu machen statt pauschal
+"wird schon wieder Cache sein" anzunehmen.
 
 Natives `<dialog>` (z.B. "Übersprungene Duplikate" beim CSV-Import) wird
 über `.showModal()` geöffnet; Tailwinds Preflight setzt `margin: 0` auf

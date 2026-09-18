@@ -92,16 +92,23 @@ def list_categories_fragment(
 @router.post("", response_class=HTMLResponse)
 def create_category(
     request: Request,
-    name: str = Form(...),
-    parent_id: str = Form(""),
+    name: list[str] = Form(...),
+    parent_id: list[str] = Form(...),
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
-    category = Category(
-        name=name.strip(),
-        parent_id=int(parent_id) if parent_id else None,
-    )
-    session.add(category)
-    session.commit()
+    """Legt eine oder mehrere Kategorien in einem Vorgang an (Mehrfachanlage-
+    Modal: beliebig viele Name+Oberkategorie-Zeilen). Leere Namenszeilen
+    (z.B. eine per JS hinzugefuegte, aber nicht ausgefuellte Zeile) werden
+    dabei still uebersprungen statt einen Fehler zu werfen."""
+    created = False
+    for row_name, row_parent_id in zip(name, parent_id):
+        row_name = row_name.strip()
+        if not row_name:
+            continue
+        session.add(Category(name=row_name, parent_id=int(row_parent_id) if row_parent_id else None))
+        created = True
+    if created:
+        session.commit()
     return RedirectResponse(url="/categories", status_code=303)
 
 

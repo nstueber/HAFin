@@ -209,4 +209,15 @@
   .show-ms .ms-cell {
     display: table-cell;
   }
+
+  /* Umbuchungsspalte (Buchungsliste): standardmaessig ausgeblendet, nur sichtbar
+     wenn das "Ansicht anpassen"-Optionsmenue die Option aktiviert hat - selbes
+     Muster wie .ms-cell/.show-ms oben. */
+  .transfer-col {
+    display: none;
+  }
+
+  .show-transfer-col .transfer-col {
+    display: table-cell;
+  }
 }

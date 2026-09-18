@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import date, timedelta
+from difflib import SequenceMatcher
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -25,6 +26,8 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 LIST_LIMIT = 200
 TRANSFER_WINDOW_DAYS = 2
 SUGGESTIONS_LIMIT = 20
+SIMILAR_PAYMENTS_LIMIT = 10
+SIMILAR_TEXT_THRESHOLD = 0.6
 
 
 def _category_groups(session: Session) -> list[dict]:
@@ -386,6 +389,48 @@ def _category_display_name(category_id: Optional[int], categories_by_id: dict) -
         if parent is not None:
             return f"{parent.name} {cat.name}"
     return cat.name
+
+
+def _text_similarity(a: str, b: str) -> float:
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def _similar_payments(session: Session, txn: Transaction, categories_by_id: dict) -> dict:
+    """Findet Buchungen mit identischem Betrag+Verwendungszweck ("exakt", konto-
+    uebergreifend) bzw. gleichem Betrag ODER aehnlichem Verwendungszweck ("aehnlich").
+    Nutzt fuer den Text-Vergleich bewusst das Standardbibliotheks-Modul difflib statt
+    einer echten Levenshtein-Bibliothek - fuer eine Vorschlagsliste (kein automatisches
+    Matching) reicht diese einfache, nachvollziehbare Heuristik. Fehlt der Verwendungs-
+    zweck, wird ersatzweise der Auftraggeber/Empfaenger verglichen.
+    """
+    txn_text = (txn.purpose or "").strip().lower() or txn.payee.strip().lower()
+    candidates = session.exec(select(Transaction).where(Transaction.id != txn.id)).all()
+
+    exact: list[Transaction] = []
+    similar: list[tuple[Transaction, bool, float]] = []
+    for c in candidates:
+        c_text = (c.purpose or "").strip().lower() or c.payee.strip().lower()
+        same_amount = c.amount == txn.amount
+        same_text = bool(txn_text) and bool(c_text) and txn_text == c_text
+        if same_amount and same_text:
+            exact.append(c)
+            continue
+        ratio = _text_similarity(txn_text, c_text) if txn_text and c_text else 0.0
+        if same_amount or ratio >= SIMILAR_TEXT_THRESHOLD:
+            similar.append((c, same_amount, ratio))
+
+    exact.sort(key=lambda c: c.booking_date, reverse=True)
+    similar.sort(key=lambda item: (item[1], item[2], item[0].booking_date), reverse=True)
+
+    def _as_result(c: Transaction) -> dict:
+        return {"txn": c, "category": categories_by_id.get(c.category_id)}
+
+    return {
+        "exact": [_as_result(c) for c in exact[:SIMILAR_PAYMENTS_LIMIT]],
+        "exact_total": len(exact),
+        "similar": [_as_result(c) for c, _same_amount, _ratio in similar[:SIMILAR_PAYMENTS_LIMIT]],
+        "similar_total": len(similar),
+    }
 
 
 @router.get("", response_class=HTMLResponse)
@@ -816,4 +861,60 @@ def save_splits(
         **_split_form_context(session, txn)
     )
     html += _render_row_html(session, txn, oob=True)
+    return HTMLResponse(content=html)
+
+
+@router.get("/{transaction_id}/details", response_class=HTMLResponse)
+def transaction_details(
+    request: Request, transaction_id: int, session: Session = Depends(get_session)
+) -> HTMLResponse:
+    txn = session.get(Transaction, transaction_id)
+    accounts_by_id, categories_by_id = _lookup_dicts(session)
+    return templates.TemplateResponse(
+        request=request,
+        name="transactions/_detail.html",
+        context={
+            "txn": txn,
+            "account": accounts_by_id.get(txn.account_id),
+            "category": categories_by_id.get(txn.category_id),
+            **_similar_payments(session, txn, categories_by_id),
+        },
+    )
+
+
+@router.post("/{transaction_id}/delete", response_class=HTMLResponse)
+def delete_transaction(
+    request: Request, transaction_id: int, session: Session = Depends(get_session)
+) -> HTMLResponse:
+    txn = session.get(Transaction, transaction_id)
+    if txn is None:
+        return HTMLResponse(content="")
+
+    # Gegenbuchung einer bestaetigten Umbuchung bleibt bestehen, verliert aber die
+    # Verknuepfung (und die dadurch feste Kategorie "Umbuchung") - nicht mitloeschen.
+    counter = session.get(Transaction, txn.counter_transaction_id) if txn.counter_transaction_id else None
+    if counter is not None:
+        counter.counter_transaction_id = None
+        counter.transaction_type = TransactionType.EINGANG if counter.amount > 0 else TransactionType.AUSGANG
+        counter.category_id = None
+        session.add(counter)
+
+    # Bargeld-Splits der geloeschten Buchung haben ohne sie keine Bedeutung mehr
+    # (Cascade Delete) - die App hat kein Soft-Delete-Konzept, daher echtes Loeschen.
+    for split in session.exec(
+        select(TransactionSplit).where(TransactionSplit.transaction_id == transaction_id)
+    ).all():
+        session.delete(split)
+
+    session.delete(txn)
+    session.commit()
+
+    # Antwort besteht ausschliesslich aus Out-of-Band-Elementen (geloeschte Zeile per
+    # hx-swap-oob="delete", ggf. aktualisierte Gegenbuchungszeile) - das eigentliche
+    # hx-target ist ein neutraler, immer vorhandener Platzhalter (siehe transactions/
+    # list.html), analog zum bereits bewaehrten Muster in bulk_set_category().
+    html = f'<tr id="transaction-row-{transaction_id}" hx-swap-oob="delete"></tr>'
+    if counter is not None:
+        session.refresh(counter)
+        html += _render_row_html(session, counter, oob=True)
     return HTMLResponse(content=html)

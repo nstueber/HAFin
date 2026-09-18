@@ -1,3 +1,4 @@
+{% from "_icons.html" import eye, trash %}
 <tr id="transaction-row-{{ row.txn.id }}" {% if oob %}hx-swap-oob="true"{% endif %}>
   <td class="ms-cell">
     {% if not row.txn.counter_transaction_id %}
@@ -75,7 +76,7 @@
     {% endif %}
     {% endif %}
   </td>
-  <td class="min-w-[14rem] text-xs">
+  <td class="min-w-[14rem] text-xs transfer-col">
     {% if row.txn.counter_transaction_id %}
     <div class="text-gray-700 dark:text-gray-300">
       ↔ {{ row.counter_account.display_name if row.counter_account else "–" }}
@@ -147,5 +148,30 @@
       </button>
       <div id="link-area-{{ row.txn.id }}"></div>
     {% endif %}
+  </td>
+  <td class="whitespace-nowrap text-right">
+    <div class="flex justify-end gap-1">
+      <button
+        type="button"
+        class="btn-ghost-icon"
+        onclick="hafinOpenDialog('/transactions/{{ row.txn.id }}/details', 'transaction-detail-dialog', 'transaction-detail-dialog-content')"
+        aria-label="Details"
+        title="Details &amp; ähnliche Zahlungen"
+      >
+        {{ eye() }}
+      </button>
+      <button
+        type="button"
+        class="btn-ghost-icon"
+        hx-post="/transactions/{{ row.txn.id }}/delete"
+        hx-target="#transaction-action-result"
+        hx-swap="innerHTML"
+        hx-confirm="Diese Buchung wirklich löschen?"
+        aria-label="Löschen"
+        title="Buchung löschen"
+      >
+        {{ trash() }}
+      </button>
+    </div>
   </td>
 </tr>

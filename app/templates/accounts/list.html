@@ -1,10 +1,16 @@
 {% extends "base.html" %}
-{% from "_icons.html" import pencil, trash %}
+{% from "_icons.html" import pencil, plus, trash %}
 {% from "_table.html" import table_search, sort_th %}
 
 {% block content %}
 <div class="card">
-  <h2 class="text-base font-semibold">Konten</h2>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-base font-semibold">Konten</h2>
+    <button type="button" class="btn-primary" onclick="document.getElementById('new-account-dialog').showModal()">
+      {{ plus("h-4 w-4") }}
+      <span>Neues Konto</span>
+    </button>
+  </div>
   {% if accounts %}
   <div id="accounts-table" class="mt-4">
     <div class="mb-3">
@@ -58,8 +64,8 @@
   {% endif %}
 </div>
 
-<div class="card">
-  <h2 class="text-base font-semibold">Neues Konto anlegen</h2>
+<dialog id="new-account-dialog" class="card modal-wide backdrop:bg-gray-900/50">
+  <h3 class="text-base font-semibold">Neues Konto anlegen</h3>
   {% if form_error %}
   <div class="alert-error mt-4">{{ form_error }}</div>
   {% endif %}
@@ -81,7 +87,13 @@
                value="{{ form_data.bank_name if form_data else '' }}" />
       </div>
     </div>
-    <button type="submit" class="btn-primary mt-5">Konto anlegen</button>
+    <div class="mt-5 flex items-center gap-3">
+      <button type="submit" class="btn-primary">Konto anlegen</button>
+      <button type="button" class="btn-outline" onclick="document.getElementById('new-account-dialog').close()">Abbrechen</button>
+    </div>
   </form>
-</div>
+</dialog>
+{% if form_error %}
+<script>document.getElementById("new-account-dialog").showModal();</script>
+{% endif %}
 {% endblock %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import cog %}
 {% from "_table.html" import sort_th %}
 
 {% block content %}
@@ -76,13 +77,42 @@
           Ohne Umbuchungen
         </a>
       </div>
-      <button
-        type="button"
-        class="btn-outline"
-        data-multiselect-toggle="#transactions-full-table"
-      >
-        Mehrfachauswahl
-      </button>
+      <div class="relative">
+        <button
+          type="button"
+          class="btn-outline"
+          data-dropdown-toggle="#table-options-panel"
+          aria-haspopup="true"
+          aria-expanded="false"
+        >
+          {{ cog("h-4 w-4") }}
+          <span>Ansicht</span>
+        </button>
+        <div
+          id="table-options-panel"
+          class="hafin-dropdown-panel absolute right-0 z-20 mt-2 hidden w-72 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-800 dark:bg-gray-900"
+        >
+          <label class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
+            <input
+              type="checkbox"
+              data-toggle-class="show-ms"
+              data-toggle-target="#transactions-full-table"
+              class="rounded border-gray-300 text-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-900"
+            />
+            Mehrfachauswahl aktivieren
+          </label>
+          <label class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
+            <input
+              type="checkbox"
+              data-toggle-class="show-transfer-col"
+              data-toggle-target="#transactions-full-table"
+              data-persist-key="hafin-show-transfer-col"
+              class="rounded border-gray-300 text-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-900"
+            />
+            Umbuchungsspalte anzeigen
+          </label>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -179,7 +209,8 @@
             {{ sort_th("Verwendungszweck", "purpose") }}
             {{ sort_th("Betrag", "amount", "text-right") }}
             <th>Kategorie</th>
-            <th>Umbuchung</th>
+            <th class="transfer-col">Umbuchung</th>
+            <th class="text-right">Aktionen</th>
           </tr>
         </thead>
         <tbody class="list" id="transaction-rows">
@@ -210,4 +241,9 @@
 <dialog id="split-dialog" class="card page-narrow w-full backdrop:bg-gray-900/50">
   <div id="split-dialog-content"></div>
 </dialog>
+
+<dialog id="transaction-detail-dialog" class="card modal-wide backdrop:bg-gray-900/50">
+  <div id="transaction-detail-dialog-content"></div>
+</dialog>
+<div id="transaction-action-result" class="hidden"></div>
 {% endblock %}
