@@ -11,14 +11,15 @@ from sqlmodel import Session, select
 from app.database import engine, get_session
 from app.models import (
     Account,
-    BARGELD_CATEGORY_NAME,
+    BARGELD_KEY,
     Category,
     RejectedTransferPair,
     Transaction,
     TransactionSplit,
     TransactionType,
-    UMBUCHUNG_CATEGORY_NAME,
+    UMBUCHUNG_KEY,
 )
+from app.system_categories import get_or_create_system_category, get_system_category
 from app.templating import templates
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -67,19 +68,11 @@ def _suggested_category_id(session: Session, txn: Transaction) -> Optional[int]:
 
 
 def _get_or_create_umbuchung_category(session: Session) -> Category:
-    category = session.exec(
-        select(Category).where(Category.name == UMBUCHUNG_CATEGORY_NAME)
-    ).first()
-    if category is None:
-        category = Category(name=UMBUCHUNG_CATEGORY_NAME)
-        session.add(category)
-        session.commit()
-        session.refresh(category)
-    return category
+    return get_or_create_system_category(session, UMBUCHUNG_KEY)
 
 
 def _bargeld_category_id(session: Session) -> Optional[int]:
-    category = session.exec(select(Category).where(Category.name == BARGELD_CATEGORY_NAME)).first()
+    category = get_system_category(session, BARGELD_KEY)
     return category.id if category else None
 
 

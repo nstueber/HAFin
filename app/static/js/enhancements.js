@@ -105,6 +105,33 @@
     };
   }
 
+  // Mobile Sortierung: Auf schmalen Viewports blenden die Karten-Tabellen (.table-stack /
+  // .txn-cards, siehe input.css) ihre Kopfzeile aus - damit die Sortierung dort nicht
+  // verloren geht, wird aus den sortierbaren Spaltenkoepfen (th.sort[data-sort]) ein
+  // Auswahlfeld erzeugt (nur unterhalb md sichtbar), das list.sort() aufruft.
+  function hafinAddMobileSort(el, list) {
+    var ths = el.querySelectorAll("table.table-stack th.sort, table.txn-cards th.sort");
+    if (!ths.length) return;
+    var wrapper = ths[0].closest("table").parentElement;
+    var select = document.createElement("select");
+    select.className = "form-input mb-3 !py-1.5 !text-xs md:hidden";
+    select.setAttribute("aria-label", "Sortierung");
+    select.add(new Option("Sortieren nach…", ""));
+    ths.forEach(function (th) {
+      var key = th.getAttribute("data-sort");
+      var labelEl = th.querySelector("span span");
+      var label = labelEl ? labelEl.textContent.trim() : key;
+      select.add(new Option(label + " ↑", key + "|asc"));
+      select.add(new Option(label + " ↓", key + "|desc"));
+    });
+    select.addEventListener("change", function () {
+      if (!select.value) return;
+      var parts = select.value.split("|");
+      list.sort(parts[0], { order: parts[1] });
+    });
+    wrapper.parentNode.insertBefore(select, wrapper);
+  }
+
   window.hafinInitTable = function (containerId, valueNames, countElementId, emptyElementId) {
     var el = document.getElementById(containerId);
     if (!el) return;
@@ -118,6 +145,8 @@
     }
     var list = new List(containerId, { valueNames: valueNames });
     window.hafinLists[containerId] = list;
+
+    hafinAddMobileSort(el, list);
 
     var searchInput = el.querySelector(".hafin-search-input");
     if (searchInput) {
@@ -263,6 +292,17 @@
     });
   }
   document.addEventListener("DOMContentLoaded", restorePersistedOptions);
+
+  // Karten-Ansicht (mobil): Klick auf den "Mehr"-Button klappt Konto/Auftraggeber/
+  // Umbuchung der jeweiligen Buchungskarte auf/zu (Klasse card-open auf der <tr>).
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest && e.target.closest("[data-card-toggle]");
+    if (!btn) return;
+    var row = btn.closest("tr");
+    if (!row) return;
+    var open = row.classList.toggle("card-open");
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  });
 
   // Generisches Dropdown-Panel (aktuell das "Ansicht anpassen"-Optionsmenue): Klick auf
   // einen [data-dropdown-toggle]-Button oeffnet/schliesst das per CSS-Selektor referenzierte

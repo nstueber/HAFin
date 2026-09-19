@@ -5,7 +5,7 @@
     <input type="text" name="name" required class="form-input" value="{{ values.name or '' }}" />
   </div>
 
-  <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
     <div>
       <label class="form-label">Trennzeichen</label>
       <select name="delimiter" class="form-input">
@@ -48,7 +48,7 @@
   <p class="mt-6 text-sm font-medium text-gray-700 dark:text-gray-300">
     CSV-Spaltennamen (aus der Kopfzeile der CSV-Datei):
   </p>
-  <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
     <div>
       <label class="form-label">Buchungsdatum</label>
       <input type="text" name="date_column" required class="form-input" value="{{ values.date_column or '' }}" />

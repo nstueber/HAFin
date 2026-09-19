@@ -31,7 +31,7 @@
   </div>
 </div>
 
-<div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+<div class="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
   <div>
     <label class="form-label">Trennzeichen</label>
     <select name="delimiter" class="form-input">
@@ -68,7 +68,7 @@
 <p class="mt-6 text-sm font-medium text-gray-700 dark:text-gray-300">
   Spalten-Zuordnung (Kopfzeile der Beispiel-CSV):
 </p>
-<div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+<div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
   {% for field_key in mapping_fields %}
   <div>
     <label class="form-label">{{ mapping_labels[field_key] }}</label>
@@ -86,7 +86,7 @@
   Vorschau (erste {{ preview_rows|length }} Zeile{{ 'n' if preview_rows|length != 1 else '' }}):
 </p>
 <div class="mt-3 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
-  <table class="table-base">
+  <table class="table-base table-stack">
     <thead>
       <tr>
         <th>Buchungsdatum</th>
@@ -98,15 +98,15 @@
     <tbody>
       {% for row in preview_rows %}
       <tr>
-        <td>
+        <td data-label="Buchungsdatum">
           <span class="inline-flex items-center gap-1.5">
             {{ row.booking_date }}
             {% if not row.booking_date_ok %}{{ warning("h-4 w-4 text-amber-500") }}{% endif %}
           </span>
         </td>
-        <td>{{ row.payee }}</td>
-        <td>{{ row.purpose }}</td>
-        <td>
+        <td data-label="Auftraggeber/Empfänger">{{ row.payee }}</td>
+        <td data-label="Verwendungszweck">{{ row.purpose }}</td>
+        <td data-label="Betrag">
           <span class="inline-flex items-center gap-1.5">
             {{ row.amount }}
             {% if not row.amount_ok %}{{ warning("h-4 w-4 text-amber-500") }}{% endif %}

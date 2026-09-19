@@ -9,7 +9,12 @@
   <form method="post" action="/categories/{{ category.id }}/edit" class="mt-4">
     <div>
       <label class="form-label">Name</label>
+      {% if category.system_key %}
+      <input type="text" disabled class="form-input cursor-not-allowed bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" value="{{ category.name }}" />
+      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Systemkategorie, nicht änderbar.</p>
+      {% else %}
       <input type="text" name="name" required class="form-input" value="{{ category.name }}" />
+      {% endif %}
     </div>
     <div class="mt-4">
       <label class="form-label">Oberkategorie (optional)</label>

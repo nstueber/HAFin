@@ -11,7 +11,7 @@
     {{ table_search("Buchungen durchsuchen…") }}
   </div>
   <div class="max-h-96 overflow-y-auto overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
-    <table class="table-base">
+    <table class="table-base table-stack">
       <thead>
         <tr>
           {{ sort_th("Datum", "date") }}
@@ -24,16 +24,16 @@
       <tbody class="list">
         {% for e in entries %}
         <tr>
-          <td class="date whitespace-nowrap font-mono text-xs">{{ e.booking_date.isoformat() }}</td>
-          <td class="account whitespace-nowrap text-xs">{{ e.account_name }}</td>
-          <td class="payee font-medium text-gray-900 dark:text-gray-100">
+          <td class="date whitespace-nowrap font-mono text-xs" data-label="Datum">{{ e.booking_date.isoformat() }}</td>
+          <td class="account whitespace-nowrap text-xs" data-label="Konto">{{ e.account_name }}</td>
+          <td class="payee font-medium text-gray-900 dark:text-gray-100" data-label="Auftraggeber">
             {{ e.payee }}
             {% if e.is_split_portion %}
             <span class="ml-1 rounded bg-accent/10 px-1.5 py-0.5 text-[0.65rem] font-medium text-accent" title="Anteil einer aufgeteilten Bargeld-Buchung">Split</span>
             {% endif %}
           </td>
-          <td class="purpose max-w-xs truncate text-xs text-gray-500 dark:text-gray-400" title="{{ e.purpose or '' }}">{{ e.purpose or "–" }}</td>
-          <td class="amount whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if e.amount > 0 else '' }}">
+          <td class="purpose max-w-xs truncate text-xs text-gray-500 dark:text-gray-400" data-label="Zweck" title="{{ e.purpose or '' }}">{{ e.purpose or "–" }}</td>
+          <td class="amount whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if e.amount > 0 else '' }}" data-label="Betrag">
             {{ e.amount|format_currency }}
           </td>
         </tr>

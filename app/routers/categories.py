@@ -6,30 +6,24 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlmodel import Session, select
 
 from app.database import engine, get_session
-from app.models import (
-    BARGELD_CATEGORY_NAME,
-    PROTECTED_CATEGORY_NAMES,
-    UMBUCHUNG_CATEGORY_NAME,
-    Category,
-    Transaction,
-)
+from app.models import SYSTEM_CATEGORY_DEFAULT_NAMES, Category, Transaction
+from app.system_categories import get_or_create_system_category
 from app.templating import templates
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
 
 def ensure_system_categories() -> None:
-    """Legt die festen, nicht loeschbaren Systemkategorien "Umbuchung" und
-    "Bargeld" an, falls sie noch nicht existieren - wird bei jedem App-Start
-    aufgerufen, damit beide von Anfang an in jeder Kategorie-Auswahl auftauchen
-    (nicht erst nach dem ersten Trigger-Ereignis wie einer Umbuchungs-Verknuepfung).
+    """Stellt die festen, weder loesch- noch umbenennbaren Systemkategorien
+    ("Umbuchung", "Bargeld", referenziert ueber Category.system_key) sicher -
+    wird bei jedem App-Start aufgerufen, damit beide von Anfang an in jeder
+    Kategorie-Auswahl auftauchen (nicht erst nach dem ersten Trigger-Ereignis
+    wie einer Umbuchungs-Verknuepfung) und Datenbanken aus der Zeit vor dem
+    system_key einmalig migriert werden (siehe get_or_create_system_category).
     """
     with Session(engine) as session:
-        for name in (UMBUCHUNG_CATEGORY_NAME, BARGELD_CATEGORY_NAME):
-            existing = session.exec(select(Category).where(Category.name == name)).first()
-            if existing is None:
-                session.add(Category(name=name))
-        session.commit()
+        for key in SYSTEM_CATEGORY_DEFAULT_NAMES:
+            get_or_create_system_category(session, key)
 
 
 def _top_level_categories(session: Session) -> list[Category]:
@@ -50,7 +44,6 @@ def _list_context(session: Session, **extra) -> dict:
         "active_nav": "categories",
         "top_level": top_level,
         "children_by_parent": children_by_parent,
-        "protected_category_names": PROTECTED_CATEGORY_NAMES,
         **extra,
     }
 
@@ -134,14 +127,15 @@ def edit_category_form(
 def update_category(
     request: Request,
     category_id: int,
-    name: str = Form(...),
+    name: str = Form(""),
     parent_id: str = Form(""),
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     category = session.get(Category, category_id)
     new_parent_id = int(parent_id) if parent_id else None
+    new_name = name.strip()
 
-    if new_parent_id == category_id:
+    def _reject(message: str) -> HTMLResponse:
         top_level = [c for c in _top_level_categories(session) if c.id != category_id]
         return templates.TemplateResponse(
             request=request,
@@ -151,12 +145,25 @@ def update_category(
                 "active_nav": "categories",
                 "category": category,
                 "top_level": top_level,
-                "form_error": "Eine Kategorie kann nicht ihre eigene Oberkategorie sein.",
+                "form_error": message,
             },
             status_code=400,
         )
 
-    category.name = name.strip()
+    if category.system_key:
+        # Systemkategorien behalten ihren Namen zwingend - das Namensfeld ist im
+        # Formular deaktiviert (wird also gar nicht mitgeschickt), aber ein
+        # direkter Request mit abweichendem Namen wird hier trotzdem abgewiesen.
+        if new_name and new_name != category.name:
+            return _reject("Systemkategorie, nicht änderbar: Der Name kann nicht umbenannt werden.")
+        new_name = category.name
+    elif not new_name:
+        return _reject("Der Name darf nicht leer sein.")
+
+    if new_parent_id == category_id:
+        return _reject("Eine Kategorie kann nicht ihre eigene Oberkategorie sein.")
+
+    category.name = new_name
     category.parent_id = new_parent_id
     session.add(category)
     session.commit()
@@ -192,7 +199,7 @@ def delete_category(
     category = session.get(Category, category_id)
     if category is None:
         return HTMLResponse(content="")
-    if category.name in PROTECTED_CATEGORY_NAMES:
+    if category.system_key:
         # Sollte ueber die UI nicht erreichbar sein (kein Loeschen-Button) -
         # trotzdem serverseitig verweigern, falls doch direkt angefragt.
         return Response(status_code=403)

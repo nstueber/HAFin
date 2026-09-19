@@ -2,9 +2,16 @@ from typing import List, Optional
 
 from sqlmodel import Field, Relationship, SQLModel
 
-UMBUCHUNG_CATEGORY_NAME = "Umbuchung"
-BARGELD_CATEGORY_NAME = "Bargeld"
-PROTECTED_CATEGORY_NAMES = {UMBUCHUNG_CATEGORY_NAME, BARGELD_CATEGORY_NAME}
+# Feste Kennzeichen der Systemkategorien - die App referenziert diese Kategorien
+# ausschliesslich ueber Category.system_key, NIE ueber den Anzeigenamen (der Name
+# ist nur der Default beim erstmaligen Anlegen und bei Systemkategorien ohnehin
+# nicht aenderbar).
+UMBUCHUNG_KEY = "umbuchung"
+BARGELD_KEY = "bargeld"
+SYSTEM_CATEGORY_DEFAULT_NAMES = {
+    UMBUCHUNG_KEY: "Umbuchung",
+    BARGELD_KEY: "Bargeld",
+}
 
 
 class Category(SQLModel, table=True):
@@ -13,6 +20,9 @@ class Category(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True)
     parent_id: Optional[int] = Field(default=None, foreign_key="category.id")
+    # Gesetzt nur bei den Systemkategorien (siehe UMBUCHUNG_KEY/BARGELD_KEY) - solche
+    # Kategorien sind weder loesch- noch umbenennbar.
+    system_key: Optional[str] = Field(default=None, index=True)
 
     parent: Optional["Category"] = Relationship(
         back_populates="children",

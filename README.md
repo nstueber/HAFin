@@ -154,12 +154,22 @@ mit den konkreten Konsequenzen gezeigt:
   eigenständigen Oberkategorien (nicht mitgelöscht, nicht blockiert).
 - Sind der Kategorie Buchungen zugeordnet, wird deren Anzahl angezeigt - beim
   Bestätigen werden genau diese Buchungen unkategorisiert (nicht mitgelöscht).
-- Die automatisch angelegten, festen Kategorien "Umbuchung" und "Bargeld"
-  haben gar keinen Löschen-Button (weder in der Liste noch serverseitig
-  löschbar, `PROTECTED_CATEGORY_NAMES` in `app/models/category.py`). Beide
-  werden bereits beim App-Start angelegt (`categories.ensure_system_categories()`),
-  damit sie von Anfang an in jeder Kategorie-Auswahl auftauchen und nicht erst
-  nach einem auslösenden Ereignis wie der ersten Umbuchungs-Verknüpfung.
+- Die automatisch angelegten Systemkategorien "Umbuchung" und "Bargeld" sind
+  weder löschbar (kein Löschen-Button, serverseitig 403) noch umbenennbar
+  (Namensfeld im Bearbeiten-Formular deaktiviert mit Hinweis "Systemkategorie,
+  nicht änderbar"; `POST /categories/{id}/edit` weist einen abweichenden Namen
+  zusätzlich serverseitig mit 400 ab - Oberkategorie ändern bleibt möglich, in
+  der Praxis hängt "Bargeld" z.B. unter einer selbst angelegten Oberkategorie).
+  **Die App referenziert sie ausschließlich über `Category.system_key`
+  (`"umbuchung"` / `"bargeld"`, `app/models/category.py`), nie über den
+  Anzeigenamen** - Zugriff über `app/system_categories.py`
+  (`get_system_category()` / `get_or_create_system_category()`). Beim App-Start
+  (`categories.ensure_system_categories()`) werden beide sichergestellt, damit sie
+  von Anfang an in jeder Kategorie-Auswahl auftauchen; eine bestehende Datenbank
+  aus der Zeit vor dem `system_key` wird dabei einmalig migriert (die Spalte
+  ergänzt `_add_missing_columns()`, danach übernimmt der Backfill die vorhandene
+  Kategorie mit dem Default-Namen samt aller bereits zugeordneten Buchungen -
+  keine Duplikate). In der Kategorienliste tragen sie ein kleines "System"-Badge.
 
 **Export/Import** (JSON, `/categories/export` bzw. `/categories/import`):
 Export bildet die Ober-/Unterkategorie-Hierarchie 1:1 ab
@@ -546,9 +556,10 @@ das Kategorie-Diagramm über Chart.js' eigenen `onClick`-Callback (liefert den
 Index des angeklickten Balkens). Dasselbe Muster (`hafinOpenDialog`) wird auch
 für die Kategorie-Löschbestätigung verwendet, siehe oben.
 
-Das Drilldown-Modal nutzt `.modal-wide` (`mx-auto w-[90vw] max-w-4xl`, siehe
-Styling-Abschnitt) statt `.page-narrow`, da eine 5-spaltige Buchungstabelle
-sonst horizontal scrollen müsste, und enthält dieselbe Sortier-/Suchfunktion
+Das Drilldown-Modal nutzt `.modal-full` (`mx-auto w-[95vw] max-w-[1600px]`,
+siehe Styling-Abschnitt - mindestens so breit wie der Hauptinhaltsbereich der
+Seite, der selbst auf 1600px begrenzt ist) statt `.page-narrow`/`.modal-wide`,
+da eine 5-spaltige Buchungstabelle sonst horizontal scrollen müsste, und enthält dieselbe Sortier-/Suchfunktion
 wie die Haupt-Buchungsliste (List.js, `hafinInitTable(...)` mit den gleichen
 sortierbaren Spaltenköpfen und Suchfeld) inkl. einer live mitlaufenden
 "Zeige X von Y"-Trefferanzeige - das Fragment wird per htmx-`innerHTML`-Swap
@@ -665,7 +676,11 @@ Dashboard-Drilldown, Buchungsdetails/"Ähnliche Zahlungen", die neuen
 "Neues Konto"/"Neue Kategorie"/"Export-Import"-Modals), gibt es zusätzlich
 `.modal-wide` (`mx-auto w-[90vw] max-w-4xl`) als eigene, deutlich breitere
 Klasse - eine gemeinsame Stelle statt die Breite pro Dialog einzeln zu setzen.
-Die eigentliche CSV-Import-Seite (`GET /import`, kein `<dialog>` sondern eine
+Dashboard-Drilldown nutzt die dritte Stufe `.modal-full` (`mx-auto w-[95vw]
+max-w-[1600px]`), die mindestens so breit wie der Hauptinhaltsbereich ist
+(Dialog 1368px bei 1440px Viewport, Inhalt 1120px). `.modal-wide`/`.modal-full`
+sind die einzigen Stellen, die Dialogbreiten setzen. Die eigentliche
+CSV-Import-Seite (`GET /import`, kein `<dialog>` sondern eine
 gewöhnliche Seite) nutzte lange Zeit fälschlich `.page-narrow` statt
 `.modal-wide`, obwohl sie optisch wie die anderen großen Fenster wirken
 sollte - das war der eine der mehrfach gemeldeten "Fenster ist zu schmal"-
@@ -692,6 +707,46 @@ in jedem Fall zuverlässig funktioniert. Jetzt stattdessen `position: fixed;
 top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0;` - eine von
 der Dialoghöhe komplett unabhängige, unzweideutige Zentrierungstechnik, per
 Playwright an fünf verschieden hohen Dialogen (172px bis 578px) verifiziert.
+
+## Mobile Ansicht (unterhalb `md`, 768px)
+
+**Root Cause für "Seite muss seitlich gescrollt werden":** die Hauptspalte in
+`base.html` (`flex-1` neben der Sidebar) hatte kein `min-w-0` - ein Flex-Kind hat
+standardmäßig `min-width: auto` und wächst daher auf die Breite seines breitesten
+Inhalts (die Buchungstabelle: ~1000px), statt dass der `overflow-x-auto`-Wrapper
+darin scrollt. Mit `min-w-0` bleibt die Seite selbst immer so breit wie der
+Viewport (per Playwright für alle Seiten bei 375px geprüft: `scrollWidth ==
+clientWidth`).
+
+**Tabellen werden zu Karten** (reines CSS in `input.css`, keine zweite
+Markup-Variante - die `<tr>`-Struktur mit ihren IDs bleibt, daher funktionieren
+htmx-Swaps, OOB-Updates und List.js unverändert):
+- `.table-stack` (generisch, mit `data-label="…"` je `<td>` für das Label per
+  `::before`): Konten, Mapping-Profile, Mapping-Vorschau, "Ähnliche Zahlungen",
+  Dashboard-Drilldown, Duplikate-/Fehlerliste beim Import. Zellen ohne Label
+  (Titel-/Aktionszelle) laufen als normaler Block.
+- `.txn-cards` (Buchungsliste): Karte mit Datum + Betrag (Zeile 1),
+  Verwendungszweck (max. 2 Zeilen), Kategorie-Auswahl und Aktionen; **Konto,
+  Auftraggeber und (falls aktiviert) Umbuchung** sind pro Karte über den
+  "Mehr/Weniger"-Button ein-/ausklappbar (`tr.card-open`, Klick-Handler in
+  `enhancements.js`; ein htmx-Swap der Zeile klappt sie wieder zu). Die
+  Mehrfachauswahl-Checkbox erscheint links in der Karte.
+- Die ausgeblendete Kopfzeile ersetzt ein automatisch erzeugtes Sortier-
+  Auswahlfeld (`hafinAddMobileSort()` in `hafinInitTable()`, aus den
+  `th.sort[data-sort]`), damit die Sortierung mobil nicht verloren geht.
+- Ab `md` (Desktop/Tablet quer) bleibt alles die normale Tabelle; das
+  Mapping-Profil-Formular stapelt seine Spalten-Zuordnung unterhalb `md`
+  (`md:grid-cols-2`) untereinander.
+
+**Filterleiste der Buchungsliste**: unterhalb `md` ersetzt ein "Filter"-Button
+(mit Badge = Anzahl aktiver Filter: "nur unkategorisiert", Umbuchungsfilter ≠
+"Alle", Datumsbereich zählt als ein Filter) neben "Ansicht" die einzelnen
+Buttons; er klappt ein Panel (`#mobile-filter-panel`, gleicher generischer
+Dropdown-Mechanismus wie das Ansicht-Menü) mit allen Filtern untereinander auf.
+Die Desktop-Steuerelemente sind unverändert im Markup, nur per `hidden
+md:inline-flex`/`md:flex` auf Mobile ausgeblendet - das Panel ist die
+mobile-only Zweitdarstellung derselben (serverseitigen, per Link/Form
+gesetzten) Filter.
 
 ## Sortier-/durchsuchbare Tabellen
 

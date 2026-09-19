@@ -7,12 +7,15 @@
 >
   <span class="{{ 'text-sm text-gray-700 dark:text-gray-300' if indent else 'font-medium text-gray-900 dark:text-gray-100' }}">
     {{ cat.name }}
+    {% if cat.system_key %}
+    <span class="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:bg-gray-800 dark:text-gray-400" title="Systemkategorie, nicht änderbar">System</span>
+    {% endif %}
   </span>
   <div class="flex gap-1">
     <a href="/categories/{{ cat.id }}/edit" class="btn-ghost-icon" aria-label="Bearbeiten">
       {{ pencil() }}
     </a>
-    {% if cat.name not in protected_category_names %}
+    {% if not cat.system_key %}
     <button
       type="button"
       class="btn-ghost-icon"

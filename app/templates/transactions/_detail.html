@@ -6,7 +6,7 @@
     {{ table_search("Treffer durchsuchen…") }}
   </div>
   <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
-    <table class="table-base">
+    <table class="table-base table-stack">
       <thead>
         <tr>
           {{ sort_th("Datum", "date") }}
@@ -21,12 +21,12 @@
           class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50"
           onclick="hafinOpenDialog('/transactions/{{ m.txn.id }}/details', 'transaction-detail-dialog', 'transaction-detail-dialog-content')"
         >
-          <td class="date whitespace-nowrap font-mono text-xs">{{ m.txn.booking_date.isoformat() }}</td>
-          <td class="amount whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if m.txn.amount > 0 else '' }}">
+          <td class="date whitespace-nowrap font-mono text-xs" data-label="Datum">{{ m.txn.booking_date.isoformat() }}</td>
+          <td class="amount whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if m.txn.amount > 0 else '' }}" data-label="Betrag">
             {{ m.txn.amount|format_currency }}
           </td>
-          <td class="purpose text-xs text-gray-500 dark:text-gray-400">{{ m.txn.purpose or m.txn.payee }}</td>
-          <td class="category text-xs">{{ m.category.name if m.category else "–" }}</td>
+          <td class="purpose text-xs text-gray-500 dark:text-gray-400" data-label="Zweck">{{ m.txn.purpose or m.txn.payee }}</td>
+          <td class="category text-xs" data-label="Kategorie">{{ m.category.name if m.category else "–" }}</td>
         </tr>
         {% endfor %}
       </tbody>

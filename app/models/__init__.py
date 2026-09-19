@@ -1,8 +1,8 @@
 from app.models.account import Account
 from app.models.category import (
-    BARGELD_CATEGORY_NAME,
-    PROTECTED_CATEGORY_NAMES,
-    UMBUCHUNG_CATEGORY_NAME,
+    BARGELD_KEY,
+    SYSTEM_CATEGORY_DEFAULT_NAMES,
+    UMBUCHUNG_KEY,
     Category,
 )
 from app.models.mapping_profile import MappingProfile
@@ -12,13 +12,13 @@ from app.models.transfer_rejection import RejectedTransferPair
 
 __all__ = [
     "Account",
-    "BARGELD_CATEGORY_NAME",
+    "BARGELD_KEY",
     "Category",
     "MappingProfile",
-    "PROTECTED_CATEGORY_NAMES",
     "RejectedTransferPair",
+    "SYSTEM_CATEGORY_DEFAULT_NAMES",
     "Transaction",
     "TransactionSplit",
     "TransactionType",
-    "UMBUCHUNG_CATEGORY_NAME",
+    "UMBUCHUNG_KEY",
 ]
