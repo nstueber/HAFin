@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  {% if error %}
+  <h2 class="text-base font-semibold text-red-700 dark:text-red-400">Import nicht durchgeführt</h2>
+  <div class="alert-error mt-4">{{ error }}</div>
+  {% else %}
+  <h2 class="text-base font-semibold text-green-700 dark:text-green-400">Import abgeschlossen</h2>
+  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    Modus:
+    <span class="font-medium text-gray-700 dark:text-gray-300">
+      {{ "In leere Datenbank importiert" if report.mode == "empty" else "Bestehende Daten ersetzt" }}
+    </span>
+  </p>
+
+  <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div class="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+      <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Importierte Datengruppen</p>
+      <p class="mt-1 text-sm">
+        {% for g in report.selected %}<span class="mr-1 inline-block rounded bg-green-100 px-2 py-0.5 text-xs text-green-800 dark:bg-green-900/40 dark:text-green-300">{{ group_labels[g] }}</span>{% endfor %}
+      </p>
+      <p class="mt-3 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Nicht importiert (ausgeschlossen)</p>
+      <p class="mt-1 text-sm">
+        {% for g in report.skipped %}<span class="mr-1 inline-block rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">{{ group_labels[g] }}</span>{% else %}<span class="text-xs text-gray-500">–</span>{% endfor %}
+      </p>
+    </div>
+    <div class="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+      <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Importierte Datensätze</p>
+      <table class="mt-1 w-full text-sm">
+        {% for section, n in report.imported.items() %}
+        <tr><td class="py-0.5 text-gray-600 dark:text-gray-300">{{ section_labels[section] }}</td><td class="py-0.5 text-right font-mono">{{ n }}</td></tr>
+        {% endfor %}
+      </table>
+      {% if report.mode == "replace" %}
+      <p class="mt-3 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Vorher gelöschte Datensätze</p>
+      <table class="mt-1 w-full text-sm">
+        {% for section, n in report.deleted.items() if n %}
+        <tr><td class="py-0.5 text-gray-600 dark:text-gray-300">{{ section_labels[section] }}</td><td class="py-0.5 text-right font-mono">{{ n }}</td></tr>
+        {% else %}
+        <tr><td class="py-0.5 text-xs text-gray-500" colspan="2">keine</td></tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if report.warnings %}
+  <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
+    <p class="font-medium">Hinweise ({{ report.warnings|length }}):</p>
+    <ul class="mt-2 list-disc space-y-0.5 pl-5 text-xs">
+      {% for w in report.warnings %}<li>{{ w }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  {% if safety_backup %}
+  <div class="mt-4 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-800">
+    <p class="font-medium">Sicherheits-Backup des Bestands vor dem Import</p>
+    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+      Wurde vor dem Löschen automatisch erzeugt (auf dem Server unter <span class="font-mono">/data/backups/</span> abgelegt,
+      die neuesten 10 werden behalten).
+    </p>
+    <a href="/backup/safety/{{ safety_backup }}" class="btn-outline mt-2 !py-1.5 !text-xs">{{ safety_backup }} herunterladen</a>
+  </div>
+  {% endif %}
+
+  <div class="mt-6 flex items-center gap-3 border-t border-gray-200 pt-5 dark:border-gray-800">
+    <a href="/backup" class="btn-primary">Zurück zu Backup &amp; Restore</a>
+    {% if not error %}<a href="/transactions" class="btn-outline">Zu den Buchungen</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

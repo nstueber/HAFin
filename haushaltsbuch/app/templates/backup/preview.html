@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% from "_icons.html" import arrow_up_tray %}
+
+{% block content %}
+<div class="card">
+  <h2 class="text-base font-semibold">Import: Vorschau</h2>
+  <dl class="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+    <div><dt class="inline text-gray-500 dark:text-gray-400">Exportiert am:</dt> <dd class="inline font-mono text-xs">{{ meta.get('exported_at', '–') }}</dd></div>
+    <div><dt class="inline text-gray-500 dark:text-gray-400">App-Version:</dt> <dd class="inline font-mono text-xs">{{ meta.get('app_version', '–') }}</dd></div>
+    <div><dt class="inline text-gray-500 dark:text-gray-400">Backup-Format:</dt> <dd class="inline font-mono text-xs">v{{ meta.get('schema_version') }}</dd></div>
+  </dl>
+  <p class="mt-3 text-sm text-gray-700 dark:text-gray-300">
+    Inhalt der Datei:
+    {% set parts = [] %}
+    {% for s, n in section_counts.items() %}{% if parts.append(section_labels[s] ~ ": " ~ n) %}{% endif %}{% endfor %}
+    {{ parts|join(" · ") if parts else "leer" }}
+  </p>
+
+  {% if problems %}
+  <div class="alert-error mt-4">
+    <p class="font-medium">Fehler in der Datei ({{ problems|length }}) - betroffene Datengruppen können nicht importiert werden:</p>
+    <ul class="mt-2 max-h-48 list-disc space-y-0.5 overflow-y-auto pl-5 text-xs">
+      {% for p in problems[:50] %}<li>{{ p }}</li>{% endfor %}
+      {% if problems|length > 50 %}<li>… und {{ problems|length - 50 }} weitere</li>{% endif %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if warnings %}
+  <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
+    <p class="font-medium">Hinweise ({{ warnings|length }}):</p>
+    <ul class="mt-2 list-disc space-y-0.5 pl-5 text-xs">
+      {% for w in warnings %}<li>{{ w }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+
+{% if importable %}
+<form method="post" action="/backup/import" id="import-form" class="space-y-6">
+  <input type="hidden" name="upload_id" value="{{ upload_id }}" />
+
+  <div class="card">
+    <h3 class="text-base font-semibold">1. Was importieren?</h3>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      Wähle eine Teilmenge der in der Datei enthaltenen Datengruppen. Buchungen benötigen Konten und
+      Kategorien - diese werden dann automatisch mit importiert.
+    </p>
+    <div class="mt-4 space-y-3" data-group-scope id="group-scope">
+      {% for g in groups %}
+      {% set ok, why = statuses[g] %}
+      <div>
+        <label class="flex items-center gap-2 text-sm {{ 'cursor-pointer text-gray-700 dark:text-gray-200' if ok else 'cursor-not-allowed text-gray-400 dark:text-gray-500' }}">
+          <input
+            type="checkbox" name="groups" value="{{ g }}" data-group="{{ g }}"
+            {% if g == 'transactions' %}data-requires="accounts,categories"{% endif %}
+            {% if ok %}checked{% else %}disabled data-locked="1"{% endif %}
+            class="rounded border-gray-300 text-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-900"
+          />
+          <span class="font-medium">{{ group_labels[g] }}</span>
+          {% if g in section_counts %}
+          <span class="text-xs">
+            ({{ section_counts[g] }}{% if g == 'transactions' %}, {{ section_counts.get('transaction_splits', 0) }} Splits{% endif %})
+          </span>
+          {% endif %}
+        </label>
+        {% if not ok %}
+        <p class="ml-6 text-xs text-gray-500 dark:text-gray-400">{{ why }}</p>
+        {% endif %}
+        <p class="ml-6 hidden text-xs text-gray-500 dark:text-gray-400" data-hint-for="{{ g }}">
+          automatisch enthalten, da für Buchungen benötigt
+        </p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="text-base font-semibold">2. Import-Modus</h3>
+    <div class="mt-4 space-y-4">
+      <div>
+        <label class="flex items-start gap-2 text-sm {{ 'cursor-pointer' if target_empty else 'cursor-not-allowed text-gray-400 dark:text-gray-500' }}">
+          <input type="radio" name="mode" value="empty" data-mode="empty" {% if target_empty %}checked{% else %}disabled{% endif %}
+                 class="mt-0.5 border-gray-300 text-accent focus:ring-accent dark:border-gray-700" />
+          <span>
+            <span class="font-medium">In leere Datenbank importieren</span>
+            <span class="block text-xs text-gray-500 dark:text-gray-400">
+              Fügt die Daten hinzu; nur möglich, wenn die Zieldatenbank keine Konten und keine Buchungen enthält.
+            </span>
+            {% if not target_empty %}
+            <span class="mt-1 block text-xs text-amber-700 dark:text-amber-400">
+              Nicht verfügbar: die Zieldatenbank enthält bereits {{ target_counts.accounts }} Konto/Konten und
+              {{ target_counts.transactions }} Buchung(en).
+            </span>
+            {% endif %}
+          </span>
+        </label>
+      </div>
+
+      <div>
+        <label class="flex cursor-pointer items-start gap-2 text-sm">
+          <input type="radio" name="mode" value="replace" data-mode="replace"
+                 class="mt-0.5 border-gray-300 text-accent focus:ring-accent dark:border-gray-700" />
+          <span>
+            <span class="font-medium text-red-700 dark:text-red-400">Bestehende Daten vollständig ersetzen</span>
+            <span class="block text-xs text-gray-500 dark:text-gray-400">
+              Löscht die bestehenden Daten der gewählten Gruppen und ersetzt sie durch den Inhalt der Datei.
+              Die Systemkategorien „Umbuchung“ und „Bargeld“ bleiben bestehen.
+            </span>
+          </span>
+        </label>
+
+        <div id="replace-panel" class="mt-3 hidden rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
+          <p class="font-semibold">Achtung: destruktive Aktion!</p>
+          <p class="mt-1" id="replace-loss">…</p>
+          <p class="mt-2 text-xs">
+            Vor dem Löschen wird automatisch ein Sicherheits-Backup des aktuellen Bestands erzeugt und
+            nach dem Import zum Download angeboten.
+          </p>
+          <label class="mt-3 block text-xs font-medium" for="confirm-text">
+            Zum Bestätigen das Wort <span class="font-mono font-bold">{{ confirm_word }}</span> eingeben:
+          </label>
+          <input type="text" id="confirm-text" name="confirm_text" autocomplete="off"
+                 class="form-input mt-1 max-w-xs !py-1.5" placeholder="{{ confirm_word }}" />
+        </div>
+      </div>
+    </div>
+    <script type="application/json" id="target-counts">{{ target_counts|tojson }}</script>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <button type="submit" id="import-submit" class="btn-primary disabled:cursor-not-allowed disabled:opacity-50" disabled>
+      {{ arrow_up_tray("h-4 w-4") }}
+      <span>Import starten</span>
+    </button>
+    <a href="/backup" class="btn-outline">Abbrechen</a>
+  </div>
+</form>
+
+<script>
+  (function () {
+    var form = document.getElementById("import-form");
+    var scope = document.getElementById("group-scope");
+    var counts = JSON.parse(document.getElementById("target-counts").textContent);
+    var word = {{ confirm_word|tojson }};
+    var panel = document.getElementById("replace-panel");
+    var loss = document.getElementById("replace-loss");
+    var submit = document.getElementById("import-submit");
+
+    function selected() {
+      var out = [];
+      scope.querySelectorAll("input[data-group]").forEach(function (b) { if (b.checked) out.push(b.getAttribute("data-group")); });
+      return out;
+    }
+    function mode() { var r = form.querySelector("input[name=mode]:checked"); return r ? r.value : ""; }
+
+    // Spiegel von replace_plan() im Backend: Konten/Kategorien/Buchungen ersetzen => alle Buchungen weg
+    function plan(sel) {
+      var p = { accounts: 0, categories: 0, mapping_profiles: 0, transactions: 0, transaction_splits: 0, rejected_transfer_pairs: 0 };
+      if (sel.indexOf("accounts") >= 0) p.accounts = counts.accounts;
+      if (sel.indexOf("categories") >= 0) p.categories = counts.categories;
+      if (sel.indexOf("mapping_profiles") >= 0) p.mapping_profiles = counts.mapping_profiles;
+      if (sel.some(function (g) { return g === "accounts" || g === "categories" || g === "transactions"; })) {
+        p.transactions = counts.transactions; p.transaction_splits = counts.transaction_splits; p.rejected_transfer_pairs = counts.rejected_transfer_pairs;
+      }
+      return p;
+    }
+    function refresh() {
+      hafinSyncGroupDeps(scope);
+      var sel = selected(), m = mode();
+      panel.classList.toggle("hidden", m !== "replace");
+      if (m === "replace") {
+        var p = plan(sel), parts = [];
+        if (p.accounts) parts.push(p.accounts + " Konto/Konten");
+        if (p.categories) parts.push(p.categories + " Kategorie(n) (ohne Systemkategorien)");
+        if (p.mapping_profiles) parts.push(p.mapping_profiles + " Mapping-Profil(e)");
+        if (p.transactions) parts.push(p.transactions + " Buchung(en) inkl. " + p.transaction_splits + " Split(s)");
+        loss.textContent = parts.length
+          ? "Dabei gehen unwiderruflich verloren (bestehende Daten): " + parts.join(", ") + "."
+          : "Für die aktuelle Auswahl sind keine bestehenden Daten vorhanden, die gelöscht würden.";
+        if (sel.indexOf("accounts") >= 0 || sel.indexOf("categories") >= 0) {
+          if (counts.transactions && !sel.includes("transactions")) {
+            loss.textContent += " Hinweis: Da Konten/Kategorien ersetzt werden, müssen auch alle bestehenden Buchungen gelöscht werden - die Buchungen aus der Datei werden mangels Auswahl NICHT importiert.";
+          }
+        }
+      }
+      var ok = sel.length > 0 && m !== "" && (m !== "replace" || document.getElementById("confirm-text").value.trim().toUpperCase() === word);
+      submit.disabled = !ok;
+    }
+    form.addEventListener("change", refresh);
+    document.getElementById("confirm-text").addEventListener("input", refresh);
+    form.addEventListener("submit", function () {
+      // deaktivierte (automatisch enthaltene) Haken werden nicht mitgesendet - der Server ergaenzt sie
+    });
+    refresh();
+  })();
+</script>
+{% else %}
+<div class="card">
+  <p class="text-sm text-gray-600 dark:text-gray-300">Aus dieser Datei kann keine Datengruppe importiert werden.</p>
+  <a href="/backup" class="btn-outline mt-4">Zurück</a>
+</div>
+{% endif %}
+{% endblock %}

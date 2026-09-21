@@ -36,6 +36,50 @@ wird in der App selbst eingestellt.
 - Schema-Änderungen bei Updates werden beim Start der App automatisch eingespielt. Trotzdem:
   vor einem Update ein Backup anlegen (Home Assistant bietet das im Update-Dialog an).
 
+## Backup & Restore in der App (portables JSON-Backup)
+
+Zusätzlich zum Home-Assistant-Backup gibt es in der App den Menüpunkt **Backup & Restore**. Er erzeugt
+ein **portables, menschenlesbares JSON-Backup** der fachlichen Daten (unabhängig von Supervisor-Snapshots) –
+z. B. für den Umzug von der Test- auf die produktive Instanz.
+
+**Exportieren:** Datengruppen per Checkbox wählen (Konten, Kategorien, Mapping-Profile, Buchungen inkl.
+Bargeld-Splits) → Datei `haushaltsbuch-backup-<Zeitstempel>.json` wird heruntergeladen. „Buchungen“
+benötigen Konten und Kategorien – diese werden dann automatisch mitexportiert. Mit enthalten sind auch
+die vom Nutzer abgelehnten Umbuchungs-Vorschläge („Keine Umbuchung“), damit sie nach einem Umzug nicht
+erneut vorgeschlagen werden.
+
+**Importieren:** Datei auswählen → **Vorschau** (Format, Version, Kennzahlen, Warnungen) → Datengruppen
+wählen (eine Teilmenge ist möglich, z. B. nur Konten + Kategorien + Mapping-Profile) → Modus wählen:
+
+| Modus | Voraussetzung | Wirkung |
+| --- | --- | --- |
+| **In leere Datenbank importieren** | Zieldatenbank enthält keine Konten und keine Buchungen | Fügt die Daten hinzu. Die Systemkategorien „Umbuchung“/„Bargeld“ werden nicht neu angelegt, sondern über ihren festen `system_key` mit den vorhandenen verknüpft. |
+| **Bestehende Daten vollständig ersetzen** | Bestätigung durch Eingabe des Wortes `LÖSCHEN` | **Destruktiv:** löscht die bestehenden Daten der gewählten Gruppen und ersetzt sie. Vorher wird automatisch ein **Sicherheits-Backup** des aktuellen Bestands erzeugt (Download nach dem Import; abgelegt unter `/data/backups/`, die neuesten 10 bleiben). Werden Konten oder Kategorien ersetzt, müssen auch alle bestehenden Buchungen gelöscht werden – die Vorschau zeigt vorab, wie viele Datensätze verloren gehen. |
+
+Der Import läuft in **einer einzigen Datenbank-Transaktion**: schlägt irgendetwas fehl, wird alles
+zurückgerollt und der vorherige Zustand bleibt erhalten. Danach zeigt ein Ergebnis-Report die importierten
+Datensätze je Typ, die ein-/ausgeschlossenen Datengruppen und Warnungen (z. B. ignorierte oder mit
+Standardwerten gefüllte Felder älterer Backups).
+
+**Skript-/Automatisierungs-Zugriff** (dieselben Endpunkte wie die Oberfläche; hinter dem Ingress nur aus
+der App heraus erreichbar, lokal z. B. per `curl`):
+
+```bash
+# Export (ohne groups = alles)
+curl -OJ "http://localhost:8000/backup/export?groups=accounts&groups=categories&groups=transactions"
+# Import in eine leere Instanz, Ergebnis als JSON
+curl -H "Accept: application/json" -F file=@haushaltsbuch-backup-....json -F mode=empty \
+     http://localhost:8000/backup/import
+# Ersetzen (Bestätigungswort nötig)
+curl -H "Accept: application/json" -F file=@backup.json -F mode=replace -F confirm_text=LÖSCHEN \
+     http://localhost:8000/backup/import
+```
+
+**Format:** ein JSON-Dokument, beginnend mit einem `meta`-Block (`format`, `schema_version` – eigene, von der
+App-Version unabhängige Versionsnummer des Backup-Formats –, `app_version`, `exported_at`, enthaltene Gruppen,
+Kennzahlen). Alle Verknüpfungen verwenden exportinterne UUIDs (`export_id`) statt Datenbank-IDs, deshalb ist das
+Backup in jede andere Instanz importierbar.
+
 ## Fehlersuche
 
 | Symptom | Ursache / Lösung |

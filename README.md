@@ -388,6 +388,69 @@ ergänzt), direkt im Detail-Dialog editierbar (`POST /transactions/{id}/comment`
 Feld ist, das die Duplikat-Erkennung nutzt, und deshalb auch für Buchungen
 editierbar bleibt, die Teil einer Umbuchung sind (kein Sperrhinweis nötig).
 
+## Backup & Restore (portables JSON-Backup)
+
+Neuer Menüpunkt "Backup & Restore" (`app/routers/backup.py`, Logik in `app/services/backup.py`,
+Templates `templates/backup/`). Ergänzt - ersetzt nicht - das Supervisor-Backup (1:1-Snapshot des
+Datenordners): ein **portables, menschenlesbares** Format für den Umzug zwischen Instanzen.
+
+**Endpunkte** (bewusst eigenständig/skriptbar, nicht nur UI-Logik): `GET /backup/export?groups=…`
+(Download, ohne `groups` alles), `POST /backup/import` (multipart: `file` *oder* `upload_id`, `mode`,
+`groups`, `confirm_text`; bei `Accept: application/json` JSON-Report), `POST /backup/import/preview`
+(UI: prüft die Datei, legt sie unter `DATA_DIR/tmp_backup_uploads/` ab - wie beim Mapping-Profil-Upload,
+Aufräumen nach 6h beim Start/Upload), `GET /backup/safety/{name}` (Sicherheits-Backups, Dateiname per
+Regex validiert). Der Export liefert zusätzlich einen `X-Backup-Report`-Header (JSON, ASCII).
+
+**Format** (`schema_version` 1, von der App-Version unabhängig; `meta` steht zuerst): `meta`
+(`format`, `schema_version`, `app_version` = Build-Arg `BUILD_VERSION` → Env `APP_VERSION`, `exported_at`,
+`included_groups`, `counts`), dann `accounts`, `categories`, `mapping_profiles`, `transactions`,
+`transaction_splits`, `rejected_transfer_pairs`. Jede Entität hat eine `export_id` (UUID4); alle
+Verknüpfungen (`account`, `category`, `parent`, `counter_transaction`, Split→`transaction`, …) zeigen auf
+diese Kennung, nie auf DB-IDs. Beim Import entstehen neue Zeilen, eine Zuordnung `export_id → Objekt` löst
+die Fremdschlüssel auf (Umbuchungs-Gegenbuchungen in einem zweiten Durchlauf, weil die ID erst nach dem
+Flush existiert). **Nicht** exportiert: eine Buchung→Mapping-Profil-Zuordnung (existiert im Datenmodell
+nicht - Profile werden nur beim Import gewählt).
+
+**Datengruppen** (Checkboxen bei Export UND Import): Konten, Kategorien, Mapping-Profile, Buchungen
+(= Buchungen + Bargeld-Splits + abgelehnte Umbuchungs-Vorschläge; letztere gehören nicht zur Aufzählung im
+Auftrag, würden aber sonst bei einem Umzug stillschweigend verloren gehen und "Keine Umbuchung"-Entscheidungen
+rückgängig machen). Abhängigkeit `transactions → accounts + categories` (`REQUIRES` im Service): erzwungene
+Gruppen sind angehakt+deaktiviert mit Hinweis (JS `hafinSyncGroupDeps` in `enhancements.js`), der Server
+ergänzt sie zusätzlich selbst (`with_dependencies`). Enthält eine Datei Buchungen ohne Konten/Kategorien
+(sehr alte Exportversion), wird nur die Buchungsgruppe mit klarem Fehlertext gesperrt.
+
+**Systemkategorien** werden beim Import nie neu angelegt, sondern über `system_key` mit den vorhandenen
+verknüpft (`_system_category()` - bewusst eine Variante OHNE Commit, siehe Transaktion); auch ihre
+Oberkategorie aus dem Backup wird übernommen (in echten Daten hängt "Bargeld" unter einer Oberkategorie).
+Alte Backups ohne `system_key` werden anhand des Default-Namens zugeordnet (mit Warnung).
+
+**Toleranz**: fehlende optionale Felder (z.B. `comment` in alten Backups) bekommen Defaults, unbekannte Felder
+werden ignoriert - beides als Warnung im Report. Pflichtfelder, ungültige Werte, defekte Referenzen,
+doppelte `export_id`s/IBANs/Profilnamen und Kategorie-Zyklen sperren die betroffene Gruppe (mit Datensatz-
+Nummer in der Meldung) **bevor** die DB angefasst wird. Beim Testen mit echten Daten aufgefallen: der
+Auftraggeber/Empfänger darf leer sein (27 von 574 echten Buchungen) und wird deshalb nicht als Pflicht-Text
+validiert.
+
+**Modi**: "In leere Datenbank" (nur wenn keine Konten und keine Buchungen; serverseitig geprüft, in der UI
+ausgegraut mit Begründung; vorhandene gleichnamige Kategorien mit gleicher Oberkategorie werden
+wiederverwendet, gleichnamige Mapping-Profile übersprungen - jeweils mit Warnung) und "Bestehende Daten
+vollständig ersetzen" (Bestätigungswort `LÖSCHEN`, in der UI live berechnete Verlustzahlen). Ersetzt wird
+gruppenweise; da Buchungen nicht auf gelöschte Konten/Kategorien zeigen dürfen, löscht das Ersetzen von
+Konten/Kategorien/Buchungen immer auch alle bestehenden Buchungen (`replace_plan`, Vorschau warnt explizit).
+Systemkategorien bleiben mit ihren IDs bestehen. Vor dem Löschen wird ein Sicherheits-Backup des
+**Gesamtbestands** nach `DATA_DIR/backups/` geschrieben (die neuesten 10 bleiben) und im Ergebnis zum
+Download angeboten.
+
+**Atomarität**: der gesamte Import (inkl. Löschen) läuft in EINER Session-Transaktion, Commit nur am Ende;
+jede Ausnahme → Rollback + Meldung mit dem Schritt, bei dem es scheiterte (`ImportFailed`). Getestet mit
+injiziertem Fehler im letzten Schritt (Bestand danach unverändert, inkl. rückgängig gemachtem Löschen).
+
+**Getestet** (`~/hafin-test-data/scripts/test_backup_service.py`, `test_backup_ui.py`,
+`test_backup_ingress.py`): kompletter Round-Trip mit einer Kopie der Produktions-DB (5 Konten, 61
+Kategorien, 574 Buchungen, 106 Umbuchungs-Verknüpfungen, 2 Splits, 1 abgelehnter Vorschlag) → in eine frische
+Instanz importiert → Bestand identisch (Felder, Verknüpfungen, Zeitstempel); Teilmengen; Ersetzen; Rollback;
+Validierungs-/Toleranzfälle; UI-Abläufe inkl. Downloads; alles auch durch den simulierten Ingress.
+
 ## Suche, Negativsuche und Datumsfilter in der Buchungsliste
 
 Die Textsuche läuft **serverseitig** über den kompletten, zum aktiven Filter

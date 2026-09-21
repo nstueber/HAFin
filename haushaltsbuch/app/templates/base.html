@@ -1,6 +1,6 @@
-{% from "_icons.html" import sun, moon, dashboard, bank, table_cells, upload, banknotes, tag %}
+{% from "_icons.html" import sun, moon, dashboard, bank, table_cells, upload, banknotes, tag, archive_box %}
 
-{% macro nav_item(href, icon_html, label, key, active_nav, layout) %}
+{% macro nav_item(href, icon_html, label, key, active_nav, layout, short=none) %}
 {% set is_active = active_nav == key %}
 {% if layout == 'sidebar' %}
 <a href="{{ href }}" class="nav-link {{ 'nav-link-active' if is_active else '' }}">
@@ -13,9 +13,10 @@
   <span>{{ label }}</span>
 </a>
 {% else %}
-<a href="{{ href }}" class="flex flex-1 flex-col items-center gap-1 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 {{ 'text-accent dark:text-accent' if is_active else '' }}">
+<a href="{{ href }}" aria-label="{{ label }}" title="{{ label }}" class="flex min-w-0 flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium {{ 'text-accent' if is_active else 'text-gray-500 dark:text-gray-400' }}">
   {{ icon_html }}
-  <span>{{ label }}</span>
+  {# Bei 7 Eintraegen passen unter 480px keine Beschriftungen mehr nebeneinander - dort nur Icons (aria-label/title bleiben) #}
+  <span class="hidden max-w-full truncate px-0.5 text-[11px] min-[480px]:block">{{ short or label }}</span>
 </a>
 {% endif %}
 {% endmacro %}
@@ -63,6 +64,7 @@
         {{ nav_item('/categories', tag('h-5 w-5'), 'Kategorien', 'categories', active_nav, 'sidebar') }}
         {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'sidebar') }}
         {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', active_nav, 'sidebar') }}
+        {{ nav_item('/backup', archive_box('h-5 w-5'), 'Backup & Restore', 'backup', active_nav, 'sidebar') }}
       </nav>
     </aside>
 
@@ -76,6 +78,7 @@
         {{ nav_item('/categories', tag('h-5 w-5'), 'Kategorien', 'categories', active_nav, 'rail') }}
         {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'rail') }}
         {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', active_nav, 'rail') }}
+        {{ nav_item('/backup', archive_box('h-5 w-5'), 'Backup & Restore', 'backup', active_nav, 'rail') }}
       </nav>
     </aside>
 
@@ -103,8 +106,9 @@
     {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'bottom') }}
     {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', active_nav, 'bottom') }}
     {{ nav_item('/categories', tag('h-5 w-5'), 'Kategorien', 'categories', active_nav, 'bottom') }}
-    {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'bottom') }}
+    {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'bottom', 'Mapping') }}
     {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', active_nav, 'bottom') }}
+    {{ nav_item('/backup', archive_box('h-5 w-5'), 'Backup & Restore', 'backup', active_nav, 'bottom', 'Backup') }}
   </nav>
 </body>
 </html>

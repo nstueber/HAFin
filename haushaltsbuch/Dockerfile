@@ -50,6 +50,8 @@ RUN chmod +x /run.sh
 
 # /data ist in Home Assistant das persistente App-Verzeichnis (Docker-Volume)
 ENV DATABASE_PATH=/data/haushaltsbuch.db
+# Wird in Backups (meta.app_version) und der Oberflaeche angezeigt
+ENV APP_VERSION=${BUILD_VERSION}
 VOLUME ["/data"]
 
 EXPOSE 8000

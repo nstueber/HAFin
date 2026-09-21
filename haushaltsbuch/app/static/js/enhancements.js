@@ -304,6 +304,27 @@
     btn.setAttribute("aria-expanded", open ? "true" : "false");
   });
 
+  // Datengruppen-Checkboxen mit Abhaengigkeiten (Backup & Restore): eine Checkbox mit
+  // data-requires="a,b" erzwingt, solange sie angehakt ist, die Gruppen a und b - diese werden
+  // angehakt und deaktiviert (+ Hinweistext [data-hint-for]); sonst frei waehlbar.
+  // data-locked="1" (serverseitig nicht importierbar) bleibt unangetastet.
+  window.hafinSyncGroupDeps = function (scope) {
+    var boxes = scope.querySelectorAll("input[data-group]");
+    var forced = {};
+    boxes.forEach(function (b) {
+      if (b.checked && b.getAttribute("data-requires")) {
+        b.getAttribute("data-requires").split(",").forEach(function (g) { forced[g] = true; });
+      }
+    });
+    boxes.forEach(function (b) {
+      if (b.getAttribute("data-locked")) return;
+      var g = b.getAttribute("data-group");
+      var hint = scope.querySelector('[data-hint-for="' + g + '"]');
+      if (forced[g]) { b.checked = true; b.disabled = true; } else { b.disabled = false; }
+      if (hint) hint.classList.toggle("hidden", !forced[g]);
+    });
+  };
+
   // Generisches Dropdown-Panel (aktuell das "Ansicht anpassen"-Optionsmenue): Klick auf
   // einen [data-dropdown-toggle]-Button oeffnet/schliesst das per CSS-Selektor referenzierte
   // Panel (Klasse "hafin-dropdown-panel"); Klick ausserhalb oder Escape schliesst es wieder.

@@ -9,6 +9,7 @@ in Home Assistant, ohne Cloud.
 - **Umbuchungserkennung** zwischen den eigenen Konten
 - **Dashboard** mit Zeitraum-Navigation, Kennzahlen und Kategorie-Diagramm inkl. Drilldown
 - Suche, Filter, Sortierung und eine mobile Ansicht für das Smartphone
+- **Backup & Restore**: portabler JSON-Export/-Import aller Daten (z. B. für den Umzug zwischen Instanzen)
 
 Die App erscheint nach der Installation als Eintrag **„Haushaltsbuch“** in der Seitenleiste
 von Home Assistant (Ingress, kein zusätzlicher Port nötig). Alle Daten liegen lokal in einer

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% from "_icons.html" import arrow_down_tray, arrow_up_tray %}
+
+{% block content %}
+<div class="card">
+  <h2 class="text-base font-semibold">Backup &amp; Restore</h2>
+  <p class="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+    Portables, menschenlesbares Backup aller fachlichen Daten als eine JSON-Datei - z.B. für den Umzug
+    von einer Test- auf die produktive Instanz. Das ergänzt das Home-Assistant-Backup (das sichert den
+    kompletten Datenordner 1:1), ersetzt es aber nicht.
+  </p>
+</div>
+
+<div class="card" id="export-card">
+  <h2 class="text-base font-semibold">Exportieren</h2>
+  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Wähle, welche Datengruppen in die Datei sollen.</p>
+
+  <form id="export-form" method="get" action="/backup/export" class="mt-4">
+    <div class="space-y-2" data-group-scope>
+      {% for g in groups %}
+      <div>
+        <label class="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+          <input
+            type="checkbox" name="groups" value="{{ g }}" checked data-group="{{ g }}"
+            {% if g == 'transactions' %}data-requires="accounts,categories"{% endif %}
+            class="rounded border-gray-300 text-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-900"
+          />
+          <span class="font-medium">{{ group_labels[g] }}</span>
+          <span class="text-xs text-gray-500 dark:text-gray-400" data-count-label="{{ g }}"
+                data-count="{{ current_counts[g] + (2 if g == 'categories' else 0) }}">
+            (aktuell {{ current_counts[g] + (2 if g == 'categories' else 0) }}{% if g == 'categories' %}, inkl. 2 Systemkategorien{% endif %})
+          </span>
+        </label>
+        <p class="ml-6 hidden text-xs text-gray-500 dark:text-gray-400" data-hint-for="{{ g }}">
+          automatisch enthalten, da für Buchungen benötigt
+        </p>
+      </div>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn-primary mt-5" id="export-submit">
+      {{ arrow_down_tray("h-4 w-4") }}
+      <span>Exportieren</span>
+    </button>
+  </form>
+
+  <div id="export-report" class="mt-4 hidden rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-800"></div>
+</div>
+
+<div class="card" id="import-card">
+  <h2 class="text-base font-semibold">Importieren</h2>
+  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    Backup-Datei auswählen - vor dem eigentlichen Import wird sie geprüft und du siehst eine Vorschau.
+  </p>
+  {% if import_error %}
+  <div class="alert-error mt-4">{{ import_error }}</div>
+  {% endif %}
+  <form method="post" action="/backup/import/preview" enctype="multipart/form-data" class="mt-4">
+    <input
+      type="file" name="file" accept=".json,application/json" required
+      class="block w-full text-sm text-gray-500 file:mr-4 file:rounded-lg file:border-0 file:bg-gray-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:text-gray-400 dark:file:bg-gray-800 dark:file:text-gray-200 dark:hover:file:bg-gray-700"
+    />
+    <button type="submit" class="btn-primary mt-5">
+      {{ arrow_up_tray("h-4 w-4") }}
+      <span>Datei prüfen</span>
+    </button>
+  </form>
+</div>
+
+<script>
+  (function () {
+    var scope = document.querySelector("#export-form [data-group-scope]");
+    var labels = {{ group_labels|tojson }};
+    hafinSyncGroupDeps(scope);
+    scope.addEventListener("change", function () { hafinSyncGroupDeps(scope); });
+
+    // Export-Report: der Download selbst ist eine normale Navigation (Content-Disposition:
+    // attachment, die Seite bleibt stehen) - der Report wird aus der Auswahl abgeleitet.
+    document.getElementById("export-form").addEventListener("submit", function (e) {
+      var boxes = scope.querySelectorAll("input[data-group]");
+      var inc = [], exc = [];
+      boxes.forEach(function (b) {
+        var n = b.closest("div").querySelector("[data-count-label]").getAttribute("data-count");
+        (b.checked ? inc : exc).push(labels[b.getAttribute("data-group")] + (b.checked ? " (" + n + ")" : ""));
+      });
+      if (!inc.length) { e.preventDefault(); alert("Bitte mindestens eine Datengruppe auswählen."); return; }
+      // deaktivierte (automatisch enthaltene) Haken wuerden nicht mitgesendet - der Server ergaenzt
+      // sie ohnehin; fuer eine eindeutige URL trotzdem explizit setzen
+      boxes.forEach(function (b) { if (b.checked && b.disabled) { b.disabled = false; setTimeout(function () { hafinSyncGroupDeps(scope); }, 0); } });
+      var box = document.getElementById("export-report");
+      box.classList.remove("hidden");
+      box.innerHTML = "<p class='font-medium'>Export gestartet</p>" +
+        "<p class='mt-1'><span class='text-green-700 dark:text-green-400'>Enthalten:</span> " + inc.join(", ") + "</p>" +
+        "<p class='mt-1'><span class='text-gray-500 dark:text-gray-400'>Nicht enthalten:</span> " + (exc.length ? exc.join(", ").replace(/ \(\d+\)/g, "") : "–") + "</p>";
+    });
+  })();
+</script>
+{% endblock %}

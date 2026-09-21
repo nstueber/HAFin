@@ -6,6 +6,17 @@ Alle nennenswerten Änderungen an dieser App werden hier festgehalten. Das Forma
 
 ## [Unveröffentlicht]
 
+### Hinzugefügt
+- **Backup & Restore** (neuer Menüpunkt): portabler, menschenlesbarer JSON-Export/-Import der Konten,
+  Kategorien (inkl. Systemkategorien per `system_key`), Mapping-Profile, Buchungen, Bargeld-Splits und
+  abgelehnten Umbuchungs-Vorschläge. Auswählbarer Umfang bei Export und Import, Vorschau mit Kennzahlen,
+  Modi „In leere Datenbank importieren“ und „Bestehende Daten vollständig ersetzen“ (mit Bestätigungswort und
+  automatischem Sicherheits-Backup), Import in einer einzigen Transaktion mit Rollback, Ergebnis-Report.
+  Skriptbar über `GET /backup/export` und `POST /backup/import`.
+
+### Geändert
+- Mobile Navigation: bei sieben Einträgen unter 480 px nur noch Icons (Beschriftung als Tooltip/aria-label).
+
 ## [0.1.0] - 2026-09-21
 
 ### Hinzugefügt
