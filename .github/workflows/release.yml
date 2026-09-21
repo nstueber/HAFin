@@ -56,11 +56,24 @@ jobs:
             echo "::error::Tag ${GITHUB_REF_NAME} passt nicht zu version=${CONFIG_VERSION} in $APP_DIR/config.yaml."
             exit 1
           fi
+          # Lokaler Dev-Baumodus (.devcontainer/sync-dev-app.sh --local-build) darf nicht im Release landen
+          if grep -q 'DEV-LOCAL-BUILD' "$APP_DIR/config.yaml" || ! grep -qE '^image:' "$APP_DIR/config.yaml"; then
+            echo "::error::$APP_DIR/config.yaml hat keine aktive 'image:'-Zeile (lokaler Dev-Baumodus? -> sync-dev-app.sh --reset)."
+            exit 1
+          fi
           if ! grep -qE "^## \[${VERSION//./\\.}\]" "$APP_DIR/CHANGELOG.md"; then
             echo "::error::Kein Eintrag '## [${VERSION}]' in $APP_DIR/CHANGELOG.md."
             exit 1
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Check THIRD-PARTY-NOTICES copy used by the image
+        run: |
+          # Der Docker-Build-Kontext ist $APP_DIR; die Lizenzseite der App liest deshalb diese Kopie.
+          if ! cmp -s THIRD-PARTY-NOTICES.md "$APP_DIR/THIRD-PARTY-NOTICES.md"; then
+            echo "::error::THIRD-PARTY-NOTICES.md im Repo-Root und in $APP_DIR/ sind nicht identisch."
+            exit 1
+          fi
 
       - name: Get build matrix
         id: matrix

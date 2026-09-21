@@ -16,10 +16,29 @@
       "problemMatcher": []
     },
     {
-      "label": "Dev-Kopie der App synchronisieren",
+      "label": "App-Version setzen (lokaler Build)",
       "type": "shell",
-      "command": "bash .devcontainer/sync-dev-app.sh",
+      "command": "bash .devcontainer/sync-dev-app.sh ${input:appVersion} --local-build",
       "problemMatcher": []
+    },
+    {
+      "label": "App-Version setzen (nur Update-Erkennung, image bleibt)",
+      "type": "shell",
+      "command": "bash .devcontainer/sync-dev-app.sh ${input:appVersion}",
+      "problemMatcher": []
+    },
+    {
+      "label": "App-Version und image zurücksetzen (letzter Commit)",
+      "type": "shell",
+      "command": "bash .devcontainer/sync-dev-app.sh --reset",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "appVersion",
+      "type": "promptString",
+      "description": "Neue Versionsnummer der installierten App (z. B. 0.2.0)"
     }
   ]
 }
