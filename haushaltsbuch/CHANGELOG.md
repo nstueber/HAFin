@@ -15,7 +15,12 @@ Alle nennenswerten Änderungen an dieser App werden hier festgehalten. Das Forma
   Skriptbar über `GET /backup/export` und `POST /backup/import`.
 
 ### Geändert
-- Mobile Navigation: bei sieben Einträgen unter 480 px nur noch Icons (Beschriftung als Tooltip/aria-label).
+- **Hauptnavigation entschlackt:** nur noch vier Einträge – Übersicht, Buchungen, Import, Einstellungen.
+  Konten, Kategorien, Mapping-Profile und Backup & Restore sind jetzt über die neue Hub-Seite
+  **Einstellungen** (`/settings`) erreichbar (Kacheln mit Icon, Titel und Beschreibung); ihre Adressen
+  bleiben unverändert. Auf den Unterseiten führt ein „← Einstellungen“-Link zurück, und „Einstellungen“ ist in
+  der Navigation auch auf allen Unterseiten als aktiv markiert. Die mobile Navigation zeigt dadurch wieder alle
+  Beschriftungen.
 
 ## [0.1.0] - 2026-09-21
 

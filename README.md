@@ -175,6 +175,23 @@ Formular mitgeführt, und die Antwort entfernt die erfolgreich importierten
 Zeilen per eingebettetem `<script>` clientseitig aus der Tabelle, statt sie
 komplett neu vom Server zu laden.
 
+## Navigation (Hauptmenü + Einstellungen-Hub)
+
+Das Hauptmenü hat nur vier Einträge (Übersicht, Buchungen, Import, Einstellungen) - in allen drei
+Varianten in `base.html` (Desktop-Sidebar, Tablet-Icon-Rail, mobile Bottom-Nav) aus denselben
+`nav_item(...)`-Aufrufen. **"Einstellungen" ist ein normaler Eintrag ohne Flyout/Untermenü** und führt auf die Hub-Seite
+`GET /settings` (`app/routers/settings.py`, `templates/settings/index.html`): Kacheln (Icon + Titel +
+Beschreibung, mobil untereinander, ab `md` zweispaltig) zu Konten, Kategorien, Mapping-Profilen und Backup &
+Restore - analog zum Einstellungen-Bereich von Home Assistant. Die Routen der Unterseiten (`/accounts`,
+`/categories`, `/mapping-profiles`, `/backup`) sind unverändert.
+
+**Aktiv-Zustand & Zurück-Link zentral in `base.html`:** die Liste `settings_children` (`active_nav`-Schlüssel
+`accounts`, `categories`, `mapping_profiles`, `backup`) markiert "Einstellungen" als aktiv (`current_nav`) und blendet
+über dem Inhalt automatisch den Link "← Einstellungen" ein - für jede Seite, die eines dieser `active_nav`-Werte setzt
+(auch Bearbeiten-/Wizard-/Ergebnis-/Fehlerseiten). Eine neue Unterseite der Einstellungen braucht also nur den passenden
+`active_nav` (und einen Eintrag in `settings_children`, falls es ein neuer Schlüssel ist) plus kachel im Hub.
+Mobil (Bottom-Nav) haben vier Einträge wieder Platz für Beschriftungen (auch bei 320px ohne Abschneiden geprüft).
+
 ## Kategorien & Kategorisierung
 
 Unter „Kategorien" (wie unter „Konten") folgt das Anlegen dem einheitlichen
@@ -390,7 +407,7 @@ editierbar bleibt, die Teil einer Umbuchung sind (kein Sperrhinweis nötig).
 
 ## Backup & Restore (portables JSON-Backup)
 
-Neuer Menüpunkt "Backup & Restore" (`app/routers/backup.py`, Logik in `app/services/backup.py`,
+Seite "Backup & Restore" (erreichbar über Einstellungen → Kachel; `app/routers/backup.py`, Logik in `app/services/backup.py`,
 Templates `templates/backup/`). Ergänzt - ersetzt nicht - das Supervisor-Backup (1:1-Snapshot des
 Datenordners): ein **portables, menschenlesbares** Format für den Umzug zwischen Instanzen.
 

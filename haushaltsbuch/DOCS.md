@@ -18,8 +18,8 @@ wird in der App selbst eingestellt.
 
 ## Erste Schritte in der App
 
-1. **Konten** → „Neues Konto“ anlegen (Name, IBAN).
-2. **Mapping-Profile** → „Neues Profil anlegen“: eine Beispiel-CSV der Bank hochladen; Trennzeichen,
+1. **Einstellungen → Konten** → „Neues Konto“ anlegen (Name, IBAN).
+2. **Einstellungen → Mapping-Profile** → „Neues Profil anlegen“: eine Beispiel-CSV der Bank hochladen; Trennzeichen,
    Kodierung, Datumsformat und Spaltenzuordnung werden erkannt und lassen sich prüfen.
 3. **Import** → Konto und Profil wählen, CSV hochladen. Bereits vorhandene Buchungen werden als
    Duplikate übersprungen (übersprungene Zeilen lassen sich bei Bedarf trotzdem importieren).
@@ -38,7 +38,7 @@ wird in der App selbst eingestellt.
 
 ## Backup & Restore in der App (portables JSON-Backup)
 
-Zusätzlich zum Home-Assistant-Backup gibt es in der App den Menüpunkt **Backup & Restore**. Er erzeugt
+Zusätzlich zum Home-Assistant-Backup gibt es in der App unter **Einstellungen → Backup & Restore** eine eigene Export-/Import-Funktion. Sie erzeugt
 ein **portables, menschenlesbares JSON-Backup** der fachlichen Daten (unabhängig von Supervisor-Snapshots) –
 z. B. für den Umzug von der Test- auf die produktive Instanz.
 

@@ -1,4 +1,8 @@
-{% from "_icons.html" import sun, moon, dashboard, bank, table_cells, upload, banknotes, tag, archive_box %}
+{% from "_icons.html" import sun, moon, dashboard, upload, banknotes, cog, arrow_left %}
+{# Unterseiten des Einstellungen-Bereichs: dort ist "Einstellungen" in der Navigation aktiv und oben
+   erscheint der Zurueck-Link zur Hub-Seite #}
+{% set settings_children = ['accounts', 'categories', 'mapping_profiles', 'backup'] %}
+{% set current_nav = 'settings' if (active_nav == 'settings' or active_nav in settings_children) else active_nav %}
 
 {% macro nav_item(href, icon_html, label, key, active_nav, layout, short=none) %}
 {% set is_active = active_nav == key %}
@@ -8,15 +12,14 @@
   <span>{{ label }}</span>
 </a>
 {% elif layout == 'rail' %}
-<a href="{{ href }}" class="flex flex-col items-center gap-1 rounded-lg px-2 py-2.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100 {{ 'bg-accent/10 text-accent hover:bg-accent/10 hover:text-accent dark:bg-accent/15 dark:text-accent dark:hover:text-accent' if is_active else '' }}">
+<a href="{{ href }}" class="flex flex-col items-center gap-1 rounded-lg px-1 py-2.5 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100 {{ 'bg-accent/10 text-accent hover:bg-accent/10 hover:text-accent dark:bg-accent/15 dark:text-accent dark:hover:text-accent' if is_active else '' }}">
   {{ icon_html }}
   <span>{{ label }}</span>
 </a>
 {% else %}
 <a href="{{ href }}" aria-label="{{ label }}" title="{{ label }}" class="flex min-w-0 flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium {{ 'text-accent' if is_active else 'text-gray-500 dark:text-gray-400' }}">
   {{ icon_html }}
-  {# Bei 7 Eintraegen passen unter 480px keine Beschriftungen mehr nebeneinander - dort nur Icons (aria-label/title bleiben) #}
-  <span class="hidden max-w-full truncate px-0.5 text-[11px] min-[480px]:block">{{ short or label }}</span>
+  <span class="max-w-full truncate px-0.5 text-[11px]">{{ short or label }}</span>
 </a>
 {% endif %}
 {% endmacro %}
@@ -58,13 +61,10 @@
         <span class="text-base font-semibold tracking-tight">Haushaltsbuch</span>
       </div>
       <nav class="flex flex-1 flex-col gap-1 px-3 py-2">
-        {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'sidebar') }}
-        {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'sidebar') }}
-        {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', active_nav, 'sidebar') }}
-        {{ nav_item('/categories', tag('h-5 w-5'), 'Kategorien', 'categories', active_nav, 'sidebar') }}
-        {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'sidebar') }}
-        {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', active_nav, 'sidebar') }}
-        {{ nav_item('/backup', archive_box('h-5 w-5'), 'Backup & Restore', 'backup', active_nav, 'sidebar') }}
+        {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', current_nav, 'sidebar') }}
+        {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', current_nav, 'sidebar') }}
+        {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', current_nav, 'sidebar') }}
+        {{ nav_item('/settings', cog('h-5 w-5'), 'Einstellungen', 'settings', current_nav, 'sidebar') }}
       </nav>
     </aside>
 
@@ -72,13 +72,10 @@
     <aside class="hidden md:sticky md:top-0 md:flex md:h-screen md:w-20 md:flex-shrink-0 md:flex-col md:items-center md:overflow-y-auto md:border-r md:border-gray-200 md:bg-white lg:hidden dark:md:border-gray-800 dark:md:bg-gray-900">
       <div class="flex h-16 items-center"></div>
       <nav class="flex flex-1 flex-col gap-1 px-2 py-2">
-        {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'rail') }}
-        {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'rail') }}
-        {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', active_nav, 'rail') }}
-        {{ nav_item('/categories', tag('h-5 w-5'), 'Kategorien', 'categories', active_nav, 'rail') }}
-        {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'rail') }}
-        {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', active_nav, 'rail') }}
-        {{ nav_item('/backup', archive_box('h-5 w-5'), 'Backup & Restore', 'backup', active_nav, 'rail') }}
+        {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', current_nav, 'rail') }}
+        {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', current_nav, 'rail') }}
+        {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', current_nav, 'rail') }}
+        {{ nav_item('/settings', cog('h-5 w-5'), 'Einstellungen', 'settings', current_nav, 'rail') }}
       </nav>
     </aside>
 
@@ -94,6 +91,14 @@
 
       <main class="flex-1 pb-20 md:pb-8">
         <div class="mx-auto max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+          {% if active_nav in settings_children %}
+          <nav aria-label="Breadcrumb" class="-mb-1.5">
+            <a href="/settings" class="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition-colors hover:text-accent dark:text-gray-400 dark:hover:text-accent">
+              {{ arrow_left("h-4 w-4") }}
+              <span>Einstellungen</span>
+            </a>
+          </nav>
+          {% endif %}
           {% block content %}{% endblock %}
         </div>
       </main>
@@ -102,13 +107,10 @@
 
   <!-- Mobile: Bottom-Navigation -->
   <nav class="fixed inset-x-0 bottom-0 z-40 flex border-t border-gray-200 bg-white md:hidden dark:border-gray-800 dark:bg-gray-900">
-    {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', active_nav, 'bottom') }}
-    {{ nav_item('/accounts', bank('h-5 w-5'), 'Konten', 'accounts', active_nav, 'bottom') }}
-    {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', active_nav, 'bottom') }}
-    {{ nav_item('/categories', tag('h-5 w-5'), 'Kategorien', 'categories', active_nav, 'bottom') }}
-    {{ nav_item('/mapping-profiles', table_cells('h-5 w-5'), 'Mapping-Profile', 'mapping_profiles', active_nav, 'bottom', 'Mapping') }}
-    {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', active_nav, 'bottom') }}
-    {{ nav_item('/backup', archive_box('h-5 w-5'), 'Backup & Restore', 'backup', active_nav, 'bottom', 'Backup') }}
+    {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', current_nav, 'bottom') }}
+    {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', current_nav, 'bottom') }}
+    {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', current_nav, 'bottom') }}
+    {{ nav_item('/settings', cog('h-5 w-5'), 'Einstellungen', 'settings', current_nav, 'bottom') }}
   </nav>
 </body>
 </html>

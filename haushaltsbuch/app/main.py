@@ -5,7 +5,16 @@ from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
 from app.ingress import IngressPathMiddleware
-from app.routers import accounts, backup, categories, dashboard, imports, mapping_profiles, transactions
+from app.routers import (
+    accounts,
+    backup,
+    categories,
+    dashboard,
+    imports,
+    mapping_profiles,
+    settings,
+    transactions,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -21,6 +30,7 @@ app.include_router(categories.router)
 app.include_router(mapping_profiles.router)
 app.include_router(imports.router)
 app.include_router(backup.router)
+app.include_router(settings.router)
 
 
 @app.on_event("startup")
