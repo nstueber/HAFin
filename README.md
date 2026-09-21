@@ -4,14 +4,48 @@ Haushaltsbuch-App zur Überwachung von Ausgaben und Einnahmen über mehrere
 Bankkonten hinweg. Backend: FastAPI + SQLModel (SQLite), Frontend:
 Jinja2-Templates + htmx, Styling mit [Tailwind CSS v4](https://tailwindcss.com/)
 (Standalone-CLI, kein Node.js/npm nötig) im cleanen, shadcn/Next.js-artigen
-Look mit HA-Blau (#03a9f4) als Akzentfarbe. Läuft perspektivisch als
-Home-Assistant-Add-on, während der Entwicklung eigenständig per Docker.
+Look mit HA-Blau (#03a9f4) als Akzentfarbe. Läuft als Home-Assistant-App
+(Supervisor-Add-on, siehe unten) und für die schnelle Entwicklung eigenständig per
+Docker/uvicorn.
+
+> **Repo-Struktur:** Der gesamte App-Code liegt im Unterordner `haushaltsbuch/`
+> (Home-Assistant-App). Alle Pfade wie `app/...`, `Dockerfile` oder `requirements.txt` in
+> diesem README beziehen sich auf `haushaltsbuch/` (also `haushaltsbuch/app/...`). Im
+> Repo-Root liegen nur `repository.yaml`, `docker-compose.yml`, `.devcontainer/`,
+> `.github/` und dieses README.
+
+## Home Assistant App (Supervisor-Add-on)
+
+- **Installation** in Home Assistant: *Einstellungen → Apps → App-Store → ⋮ → Repositories* →
+  `https://github.com/nstueber/HAFin` hinzufügen. Nutzungs-/Backup-/Troubleshooting-Doku:
+  [`haushaltsbuch/DOCS.md`](haushaltsbuch/DOCS.md).
+- **Struktur:** `repository.yaml` (Repo-Metadaten), `haushaltsbuch/config.yaml` (App-Konfiguration:
+  Ingress, `backup: cold`, `image: ghcr.io/nstueber/hafin-haushaltsbuch`), `haushaltsbuch/Dockerfile`
+  (Multi-Stage: Tailwind-Build-Stage + Python-Runtime, Basis-Image direkt per `FROM`, keine
+  `build.yaml`), `haushaltsbuch/run.sh` (Startskript, `exec uvicorn` als PID 1).
+- **Ingress:** Hinter dem HA-Ingress liegt die App unter `/api/hassio_ingress/<token>/`; Supervisor
+  entfernt das Präfix und liefert es im Header `X-Ingress-Path`. Da alle Templates/JS root-relative
+  URLs nutzen, schreibt `app/ingress.py` (`IngressPathMiddleware`) sie zentral in den HTML-Antworten
+  und `Location`-Headern um - nur wenn der Header vorhanden und im erwarteten Format ist, sonst
+  bleibt jede Antwort unverändert (lokaler Betrieb, Docker). Neue Templates dürfen weiterhin einfach
+  `/pfad` schreiben; nur *neue Top-Level-Routen* müssen in `_JS_RE` (URL-Literale in Inline-JS/JSON)
+  ergänzt werden, Attribute (`href`, `src`, `action`, `hx-*`) werden unabhängig vom Pfad erfasst.
+- **Schema-Migration:** Dieses Projekt nutzt bewusst **kein Alembic** - `init_db()` legt beim
+  Start fehlende Tabellen/Spalten an (`_add_missing_columns`), `run.sh` braucht deshalb keinen
+  separaten Migrationsschritt (Hinweis im Skript, falls Alembic später eingeführt wird).
+- **Releases:** SemVer; `version` in `config.yaml`, Git-Tag `vX.Y.Z` und Eintrag in
+  `haushaltsbuch/CHANGELOG.md` müssen übereinstimmen, dann `git tag vX.Y.Z && git push --tags` - der
+  Workflow `.github/workflows/release.yml` baut `amd64`+`aarch64` und pusht nach GHCR (Ablauf und
+  Checkliste in `haushaltsbuch/DOCS.md`). Einmalig: GHCR-Package auf *Public* stellen.
+- **Lokale HA-Test-Instanz:** `.devcontainer/` (Supervisor + HA im Devcontainer, getrennt vom
+  produktiven Zuhause), Anleitung in `haushaltsbuch/DOCS.md`.
 
 ## Lokal starten (venv)
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+cd haushaltsbuch
+python3 -m venv ../.venv
+source ../.venv/bin/activate
 pip install -r requirements.txt
 DATABASE_PATH=./data/haushaltsbuch.db uvicorn app.main:app --reload --port 8000
 ```
@@ -40,7 +74,11 @@ chmod +x tailwindcss
 ## Mit Docker starten
 
 ```bash
-docker build -t haushaltsbuch .
+# empfohlen: Docker Compose (Volume haushaltsbuch-data, Neustart-Policy unless-stopped)
+docker compose up --build
+
+# oder manuell
+docker build -t haushaltsbuch ./haushaltsbuch
 docker run --rm -p 8000:8000 -v haushaltsbuch-data:/data haushaltsbuch
 ```
 
@@ -49,15 +87,24 @@ App: http://localhost:8000
 ## Projektstruktur
 
 ```
-app/
-  models/       SQLModel-Datenmodelle (Konten, Kategorien, Mapping-Profile, Transaktionen)
-  routers/      accounts, transactions, categories, mapping_profiles, imports (CSV-Import)
-  services/     CSV-Erkennungslogik + Parsing (Encoding, Trennzeichen, Dezimaltrennzeichen, Datumsformat)
-  templates/    Jinja2-Templates (inkl. _icons.html mit Heroicons-SVG-Makros)
-  static/       JS (htmx, Theme-Toggle), CSS (input.css = Quelle, app.css = generiert)
-  database.py   DB-Engine & Session, leichte Auto-Migration für neue Spalten
-  templating.py Zentrales Jinja2Templates-Objekt inkl. format_iban-Filter
-  main.py       FastAPI-App, Health-Check, Startseite
+repository.yaml               HA-Repository-Metadaten
+docker-compose.yml            schneller Dev-Loop ohne Supervisor
+.devcontainer/  .vscode/      lokale HA-Test-Instanz (Supervisor + HA)
+.github/workflows/release.yml Multi-Arch-Build + GHCR-Publish bei Tag vX.Y.Z
+haushaltsbuch/                die Home-Assistant-App
+  config.yaml Dockerfile run.sh README.md DOCS.md CHANGELOG.md icon.png logo.png
+  requirements.txt
+  app/
+    models/       SQLModel-Datenmodelle (Konten, Kategorien, Mapping-Profile, Transaktionen)
+    routers/      accounts, transactions, categories, mapping_profiles, imports (CSV-Import)
+    services/     CSV-Erkennungslogik + Parsing (Encoding, Trennzeichen, Dezimaltrennzeichen, Datumsformat)
+    templates/    Jinja2-Templates (inkl. _icons.html mit Heroicons-SVG-Makros)
+    static/       JS (htmx, Theme-Toggle), CSS (input.css = Quelle, app.css = generiert)
+    database.py   DB-Engine & Session, leichte Auto-Migration für neue Spalten
+    ingress.py    HA-Ingress: URL-Umschreibung hinter dem Ingress-Pfad (Middleware)
+    system_categories.py  Zugriff auf die Systemkategorien per system_key
+    templating.py Zentrales Jinja2Templates-Objekt inkl. format_iban-Filter
+    main.py       FastAPI-App, Health-Check, Startseite
 ```
 
 ## Datenbank

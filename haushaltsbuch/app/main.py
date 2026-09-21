@@ -4,11 +4,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
+from app.ingress import IngressPathMiddleware
 from app.routers import accounts, categories, dashboard, imports, mapping_profiles, transactions
 
 BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="Haushaltsbuch")
+app.add_middleware(IngressPathMiddleware)
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 

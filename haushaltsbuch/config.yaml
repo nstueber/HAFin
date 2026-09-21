@@ -1,0 +1,21 @@
+name: "Haushaltsbuch"
+version: "0.1.0"
+slug: "haushaltsbuch"
+description: "Haushaltsbuch zur Verwaltung von Ein- und Ausgaben"
+url: "https://github.com/nstueber/HAFin/tree/main/haushaltsbuch"
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8000
+panel_icon: mdi:cash-multiple
+panel_title: "Haushaltsbuch"
+# Bewusst "cold": Supervisor stoppt die App kurz vor dem Backup - ein Live-Snapshot
+# der laufenden SQLite-Datei koennte sonst inkonsistent sein.
+backup: cold
+# Generisches Multi-Arch-Manifest (alles klein geschrieben, wie von GHCR gefordert);
+# Supervisor zieht "<image>:<version>", die Architektur loest das Manifest auf.
+image: "ghcr.io/nstueber/hafin-haushaltsbuch"

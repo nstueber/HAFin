@@ -1,0 +1,117 @@
+# Baut bei jedem Versions-Tag (vX.Y.Z) die Multi-Arch-Images (amd64 + aarch64) der Home-Assistant-App
+# und veroeffentlicht sie nach GHCR:
+#   ghcr.io/nstueber/amd64-hafin-haushaltsbuch:<version>     (architekturspezifisch)
+#   ghcr.io/nstueber/aarch64-hafin-haushaltsbuch:<version>
+#   ghcr.io/nstueber/hafin-haushaltsbuch:<version> / :latest (Multi-Arch-Manifest, darauf zeigt
+#                                                             `image:` in haushaltsbuch/config.yaml)
+#
+# WICHTIG (einmalig, manuell): Nach dem ersten erfolgreichen Push muss das GHCR-Package
+# (github.com/nstueber?tab=packages -> hafin-haushaltsbuch, ebenso die beiden Arch-Packages ->
+# "Package settings" -> "Change visibility") auf "Public" gestellt werden. Andernfalls kann
+# Supervisor das Image nicht ohne Zugangsdaten ziehen und die Installation/Updates schlagen fehl.
+#
+# Der eingebaute GITHUB_TOKEN reicht fuer den Push (packages: write), weil Repo und Package
+# zusammengehoeren (das Dockerfile setzt dafuer das Label org.opencontainers.image.source).
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+env:
+  APP_DIR: haushaltsbuch
+  ARCHITECTURES: '["amd64", "aarch64"]'
+  IMAGE_NAME: hafin-haushaltsbuch
+
+permissions:
+  contents: read
+
+jobs:
+  init:
+    name: Initialize build
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Tag must point to a commit on main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag ${GITHUB_REF_NAME} zeigt auf einen Commit, der nicht auf main liegt."
+            exit 1
+          fi
+
+      - name: Derive version and check consistency (tag == config.yaml == CHANGELOG)
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          CONFIG_VERSION="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/p' "$APP_DIR/config.yaml" | head -n1)"
+          if [ "$CONFIG_VERSION" != "$VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} passt nicht zu version=${CONFIG_VERSION} in $APP_DIR/config.yaml."
+            exit 1
+          fi
+          if ! grep -qE "^## \[${VERSION//./\\.}\]" "$APP_DIR/CHANGELOG.md"; then
+            echo "::error::Kein Eintrag '## [${VERSION}]' in $APP_DIR/CHANGELOG.md."
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Get build matrix
+        id: matrix
+        uses: home-assistant/builder/actions/prepare-multi-arch-matrix@2026.09.0
+        with:
+          architectures: ${{ env.ARCHITECTURES }}
+          image-name: ${{ env.IMAGE_NAME }}
+
+  build:
+    name: Build ${{ matrix.arch }} image
+    needs: init
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write # Cosign-Signatur
+      packages: write # Push nach GHCR
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.init.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build image
+        uses: home-assistant/builder/actions/build-image@2026.09.0
+        with:
+          arch: ${{ matrix.arch }}
+          context: ${{ env.APP_DIR }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          image: ${{ matrix.image }}
+          image-tags: |
+            ${{ needs.init.outputs.version }}
+            latest
+          push: "true"
+          skip-existing: ${{ needs.init.outputs.version }}
+          version: ${{ needs.init.outputs.version }}
+
+  manifest:
+    name: Publish multi-arch manifest
+    needs: [init, build]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      packages: write
+    steps:
+      - name: Publish multi-arch manifest
+        uses: home-assistant/builder/actions/publish-multi-arch-manifest@2026.09.0
+        with:
+          architectures: ${{ env.ARCHITECTURES }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          image-name: ${{ env.IMAGE_NAME }}
+          image-tags: |
+            ${{ needs.init.outputs.version }}
+            latest
+          skip-existing: ${{ needs.init.outputs.version }}

@@ -1,0 +1,20 @@
+# Schneller lokaler Dev-Loop OHNE Home Assistant/Supervisor:
+#   docker compose up --build        ->  http://localhost:8000
+# Unabhaengig von der App-Struktur (haushaltsbuch/config.yaml, Ingress, Supervisor) - dafuer
+# gibt es den Devcontainer (siehe haushaltsbuch/DOCS.md). Ohne Ingress-Header laeuft die App
+# byte-identisch zum Standalone-Betrieb.
+services:
+  haushaltsbuch:
+    build: ./haushaltsbuch
+    image: haushaltsbuch
+    container_name: haushaltsbuch
+    ports:
+      - "8000:8000"
+    volumes:
+      - haushaltsbuch-data:/data
+    restart: unless-stopped
+
+volumes:
+  haushaltsbuch-data:
+    # fester Name = dasselbe Volume wie bei `docker run -v haushaltsbuch-data:/data`
+    name: haushaltsbuch-data
