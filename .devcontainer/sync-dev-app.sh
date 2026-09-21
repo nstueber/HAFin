@@ -8,10 +8,18 @@
 # echte config.yaml im Arbeitsverzeichnis - siehe Warnung unten.
 #
 # Nutzung:
-#   bash .devcontainer/sync-dev-app.sh 0.2.0                 version auf 0.2.0 setzen
-#   bash .devcontainer/sync-dev-app.sh 0.2.0 --local-build   dazu `image:` auskommentieren (siehe unten)
-#   bash .devcontainer/sync-dev-app.sh --reset               version UND image auf den letzten Commit zuruecksetzen
+#   bash .devcontainer/sync-dev-app.sh --dev-build           DEV-Build mit NEUER Buildnummer: "<Basis>-dev.<N>"
+#                                                            (z. B. 0.3.1-dev.4) + `image:` auskommentiert
+#   bash .devcontainer/sync-dev-app.sh --reset               DEV-Modus verlassen: Basisversion (ohne -dev.N), `image:` wieder aktiv
+#                                                            (ausserhalb des DEV-Modus aendert es die Version nicht)
+#   bash .devcontainer/sync-dev-app.sh 0.3.1                 Version explizit setzen (Release-Version, `image:` aktiv)
+#   bash .devcontainer/sync-dev-app.sh 0.2.0 --local-build   explizite Version + `image:` auskommentiert (siehe unten)
 #   bash .devcontainer/sync-dev-app.sh                       aktuelle Version anzeigen
+#
+# --dev-build: Jeder Aufruf zaehlt die Buildnummer hoch (Zaehler in .devcontainer/.dev-build-number, nicht im Git;
+# faengt bei einer neuen Basisversion wieder bei 1 an). So ist jeder DEV-Stand fuer Supervisor eine neue Version
+# ("Update verfuegbar") und die Buildnummer steht in der App (Seitenleiste/Einstellungen/Backup-Meta) - auch im lokalen
+# Docker-Image, wenn es aus demselben Stand gebaut wird. <Basis> ist die aktuelle Version in config.yaml ohne -dev.N.
 #
 # Danach in Home Assistant: Einstellungen -> Apps -> App-Store -> ⋮ -> Nach Updates suchen, dann
 # bei "Haushaltsbuch" auf "Aktualisieren".
@@ -42,12 +50,14 @@ read_version() {
 }
 
 usage() {
-  echo "Nutzung: bash .devcontainer/sync-dev-app.sh <VERSION> [--local-build] | --reset" >&2
+  echo "Nutzung: bash .devcontainer/sync-dev-app.sh --dev-build | --reset | <VERSION> [--local-build]" >&2
 }
 
 CURRENT="$(read_version < "$CONFIG")"
 ARG="${1:-}"
 LOCAL_BUILD=0
+BASE_VERSION="${CURRENT%%-dev.*}"     # Version ohne DEV-Buildnummer
+COUNTER_FILE="$ROOT/.devcontainer/.dev-build-number"
 
 case "$ARG" in
   "")
@@ -58,10 +68,24 @@ case "$ARG" in
     usage
     exit 0
     ;;
+  --dev-build)
+    [ $# -eq 1 ] || { usage; exit 1; }
+    [ -n "$BASE_VERSION" ] || { echo "Keine Version in $CONFIG gefunden." >&2; exit 1; }
+    LAST_BASE=""; LAST_N=0
+    if [ -f "$COUNTER_FILE" ]; then read -r LAST_BASE LAST_N < "$COUNTER_FILE" || true; fi
+    [[ "$LAST_N" =~ ^[0-9]+$ ]] || LAST_N=0
+    [ "$LAST_BASE" = "$BASE_VERSION" ] || LAST_N=0     # neue Basisversion -> Zaehlung beginnt neu
+    BUILD_N=$((LAST_N + 1))
+    TARGET="${BASE_VERSION}-dev.${BUILD_N}"
+    LOCAL_BUILD=1
+    ;;
   --reset)
     [ $# -eq 1 ] || { usage; exit 1; }
-    TARGET="$(git -C "$ROOT" show HEAD:haushaltsbuch/config.yaml | read_version)"
-    [ -n "$TARGET" ] || { echo "Version im letzten Commit nicht gefunden." >&2; exit 1; }
+    if grep -q "^${MARKER}image:" "$CONFIG" || [[ "$CURRENT" == *-dev.* ]]; then
+      TARGET="$BASE_VERSION"       # DEV-Modus verlassen: Basisversion (ohne Buildnummer)
+    else
+      TARGET="$CURRENT"            # nicht im DEV-Modus: Version bleibt, nur ein fehlendes image: wird ergaenzt
+    fi
     ;;
   *)
     if ! [[ "$ARG" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
@@ -98,9 +122,13 @@ if [ "$LOCAL_BUILD" = "1" ]; then
   sed -i "s/^image:/${MARKER}image:/" "$CONFIG"
 fi
 
+if [ "$ARG" = "--dev-build" ]; then
+  echo "$BASE_VERSION $BUILD_N" > "$COUNTER_FILE"
+fi
+
 echo "version in $CONFIG: ${CURRENT:-?} -> $TARGET"
 if [ "$ARG" = "--reset" ]; then
-  echo "version und image entsprechen wieder dem letzten Commit."
+  echo "DEV-Modus verlassen: version = ${TARGET}, image: wieder aktiv."
 else
   if [ "$LOCAL_BUILD" = "1" ]; then
     echo "image: auskommentiert -> Supervisor baut die App lokal aus dem Dockerfile."

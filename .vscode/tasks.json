@@ -16,6 +16,12 @@
       "problemMatcher": []
     },
     {
+      "label": "DEV-Build mit neuer Buildnummer",
+      "type": "shell",
+      "command": "bash .devcontainer/sync-dev-app.sh --dev-build",
+      "problemMatcher": []
+    },
+    {
       "label": "App-Version setzen (lokaler Build)",
       "type": "shell",
       "command": "bash .devcontainer/sync-dev-app.sh ${input:appVersion} --local-build",
@@ -28,7 +34,7 @@
       "problemMatcher": []
     },
     {
-      "label": "App-Version und image zurücksetzen (letzter Commit)",
+      "label": "DEV-Modus verlassen (Basisversion, image aktiv)",
       "type": "shell",
       "command": "bash .devcontainer/sync-dev-app.sh --reset",
       "problemMatcher": []
