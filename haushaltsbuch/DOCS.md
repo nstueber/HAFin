@@ -80,6 +80,36 @@ App-Version unabhängige Versionsnummer des Backup-Formats –, `app_version`, `
 Kennzahlen). Alle Verknüpfungen verwenden exportinterne UUIDs (`export_id`) statt Datenbank-IDs, deshalb ist das
 Backup in jede andere Instanz importierbar.
 
+## Kategorisierungsregeln
+
+Unter **Einstellungen → Kategorisierungsregeln** legst du Regeln an, die neu importierte Buchungen automatisch einer
+Kategorie zuordnen: *Feld* (Verwendungszweck oder Auftraggeber/Empfänger) + *Bedingung* (enthält, beginnt mit, ist
+exakt) + *Vergleichswert* → *Ziel-Kategorie*. Groß-/Kleinschreibung spielt keine Rolle. Die Regeln werden von oben nach
+unten geprüft, **die erste passende gewinnt** – mit den Pfeilen änderst du die Reihenfolge. Bereits vorhandene oder
+manuell kategorisierte Buchungen werden nie verändert.
+
+- **Beim CSV-Import** werden die Regeln automatisch auf neue Buchungen angewendet (die Ergebnisseite zeigt, wie viele).
+- **Fest zuweisen oder nur vorschlagen:** Bei „Nur als Vorschlag anzeigen“ bleibt die Buchung unkategorisiert; in der Buchungsliste
+  erscheint „Vorschlag: … übernehmen“ (ein Klick setzt die Kategorie).
+- **Rückwirkend mit Vorschau:** „Vorschau ansehen…“ listet die Treffer auf bereits vorhandene, noch unkategorisierte Buchungen.
+  Du wählst einzelne Treffer ab und bestätigst erst mit „Ausgewählte anwenden“.
+- **Schnell anlegen:** im Detailfenster einer Buchung „Regel aus dieser Buchung erstellen“ – das Formular ist mit
+  Verwendungszweck/Auftraggeber und der Kategorie der Buchung vorausgefüllt.
+
+## Budgets
+
+Unter **Einstellungen → Budgets** legst du pro Kategorie (Ober- oder Unterkategorie) einen Monatsbetrag fest (leer oder 0 =
+kein Budget). In der **Übersicht** erscheint bei den Zeiträumen „Monat“ und „Jahr“ (dort Monatsbetrag × 12) der Bereich „Budgets“ mit
+einem Fortschrittsbalken je Kategorie (grün bis 79 %, gelb 80–100 %, rot darüber); ein Klick zeigt die zugehörigen Buchungen. Ausgaben einer Unterkategorie zählen auch in das Budget ihrer
+Oberkategorie. Gezählt werden alle Konten, ohne Umbuchungen.
+
+## Alle Daten löschen
+
+Unter **Einstellungen → Backup & Restore → Alle Daten löschen** setzt du die Datenbank komplett zurück (Konten,
+Kategorien außer den Systemkategorien, Mapping-Profile, Regeln, Budgets, Buchungen). Zur Sicherheit musst du `LÖSCHEN`
+eingeben; direkt vor dem Löschen wird automatisch ein Sicherheits-Backup erstellt, das du danach herunterladen kannst.
+Kategorisierungsregeln und Budgets sind auch Teil des Backups (eigene Datengruppen beim Export/Import).
+
 ## Version und Lizenzen
 
 Die installierte Version steht unten in der Seitenleiste und auf der Seite **Einstellungen**. Dort führt auch der
@@ -150,18 +180,18 @@ Der schnelle Dev-Loop ohne Supervisor bleibt davon unabhängig: `docker compose 
    **„Haushaltsbuch“** (Slug `local_haushaltsbuch`, Ordner `haushaltsbuch/` dieses Repositories – es gibt keine
    separate Kopie). Da `config.yaml` ein `image:` enthält, zieht Supervisor `ghcr.io/nstueber/hafin-haushaltsbuch:<version>`;
    installierbar ist also nur eine bereits veröffentlichte Version.
-5. **Update-Pfad / aktuellen Code testen:** Die Versionsnummer der installierten App direkt setzen:
+5. **DEV-Stand mit neuer Buildnummer testen:** `config.yaml` enthält die Release-Version (z. B. `0.3.1`). Für jeden DEV-Stand
    ```bash
-   bash .devcontainer/sync-dev-app.sh 0.2.0 --local-build   # version setzen + image: auskommentieren
+   bash .devcontainer/sync-dev-app.sh --dev-build    # Version "0.3.1-dev.<N>", N zählt bei jedem Aufruf hoch
    ```
-   Nach „Nach Updates suchen“ zeigt der Store bei „Haushaltsbuch“ „Update verfügbar“; „Aktualisieren“ baut die App
-   dann lokal aus dem Dockerfile (Supervisor: `docker buildx build`), der aktuelle Code des Arbeitsverzeichnisses ist
-   also testbar. Nach Codeänderungen dasselbe Skript erneut ausführen (bzw. „Neu bauen“ im Store, solange die
-   Version gleich bleibt). Ohne `--local-build` bleibt `image:` aktiv: das Update wird erkannt, das Ausführen zieht
-   aber `…:<version>` aus GHCR und gelingt erst nach dem Release.
-   **Das Skript ändert die echte `config.yaml`:** nach dem Test `bash .devcontainer/sync-dev-app.sh --reset`
-   (stellt Version **und** `image:` auf den letzten Commit zurück). Der Release-Workflow bricht ab, falls ein
-   auskommentiertes `image:` committet wurde.
+   Das kommentiert `image:` aus (Supervisor baut lokal aus dem Dockerfile) und vergibt eine **neue Buildnummer**
+   (Zähler in `.devcontainer/.dev-build-number`, nicht im Git; bei neuer Basisversion wieder ab 1). Für Supervisor ist jeder Stand eine
+   neue Version: nach „Nach Updates suchen“ zeigt der Store „Update verfügbar“, „Aktualisieren“ baut den aktuellen Code. Die
+   Buildnummer steht in der App (Seitenleiste, Einstellungen, `meta.app_version` der Backups) – auch im lokalen Docker-Image, wenn es
+   aus demselben Stand gebaut wird. Nach dem Test `bash .devcontainer/sync-dev-app.sh --reset` (Basisversion ohne Buildnummer, `image:`
+   wieder aktiv). **Das Skript ändert die echte `config.yaml`;** der Release-Workflow bricht ab, falls ein auskommentiertes `image:`
+   committet wurde. Ohne `--dev-build` bleibt `image:` aktiv: das Update wird erkannt, das Ausführen zieht aber `…:<version>` aus GHCR
+   und gelingt erst nach dem Release.
 
 **Was vor einem Release geprüft werden soll:**
 
@@ -170,4 +200,4 @@ Der schnelle Dev-Loop ohne Supervisor bleibt davon unabhängig: `docker compose 
 | Ingress | App über die Seitenleiste öffnen; alle Seiten durchklicken, Formulare abschicken, CSV hochladen, Dashboard-Drilldown, Dialoge (kein Link darf ins HA-Root führen). |
 | Options-Schema | Die App hat keine Optionen – Reiter „Konfiguration“ zeigt nichts; sicherstellen, dass das so bleibt, bzw. bei neuen Optionen `options`/`schema` in `config.yaml` ergänzen. |
 | Backup/Restore | Daten anlegen → Backup erstellen (App wird dafür kurz gestoppt) → Daten ändern → Backup einspielen → Daten müssen wieder da sein. |
-| Update-Pfad | Installierte Version → `sync-dev-app.sh <neue Version> --local-build` → „Nach Updates suchen“ → Store zeigt „Update verfügbar“ → Update anstoßen (lokaler Build) → Daten und Schema müssen erhalten bleiben (Auto-Migration beim Start). Danach `sync-dev-app.sh --reset`. |
+| Update-Pfad | Installierte Version → `sync-dev-app.sh --dev-build` → „Nach Updates suchen“ → Store zeigt „Update verfügbar“ → Update anstoßen (lokaler Build) → Daten und Schema müssen erhalten bleiben (Auto-Migration beim Start). Danach `sync-dev-app.sh --reset`. |

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_icons.html" import bank, tag, table_cells, archive_box, chevron_right %}
+{% from "_icons.html" import bank, tag, table_cells, archive_box, chevron_right, adjustments, chart_bar %}
 
 {% macro tile(href, icon_html, title, description) %}
 <a
@@ -23,6 +23,10 @@
           "Bankkonten mit IBAN verwalten, denen importierte Buchungen zugeordnet werden.") }}
   {{ tile("/categories", tag("h-5 w-5"), "Kategorien",
           "Ober- und Unterkategorien anlegen und bearbeiten, Kategorienliste exportieren/importieren.") }}
+  {{ tile("/categorization-rules", adjustments("h-5 w-5"), "Kategorisierungsregeln",
+          "Buchungen beim CSV-Import automatisch anhand von Verwendungszweck oder Auftraggeber kategorisieren.") }}
+  {{ tile("/budgets", chart_bar("h-5 w-5"), "Budgets",
+          "Monatliche Budgets pro Kategorie festlegen und im Dashboard verfolgen.") }}
   {{ tile("/mapping-profiles", table_cells("h-5 w-5"), "Mapping-Profile",
           "CSV-Formate deiner Banken (Trennzeichen, Spalten, Datumsformat) verwalten.") }}
   {{ tile("/backup", archive_box("h-5 w-5"), "Backup & Restore",

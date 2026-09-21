@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card page-narrow">
+  <h2 class="text-base font-semibold">Regel bearbeiten</h2>
+  {% if form_error %}
+  <div class="alert-error mt-4">{{ form_error }}</div>
+  {% endif %}
+  <form method="post" action="/categorization-rules/{{ rule.id }}/edit" class="mt-4">
+    {% set id_suffix = "edit" %}
+    {% include "categorization_rules/_form_fields.html" %}
+    <div class="mt-5 flex items-center gap-3">
+      <button type="submit" class="btn-primary">Speichern</button>
+      <a href="/categorization-rules" class="btn-outline">Abbrechen</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

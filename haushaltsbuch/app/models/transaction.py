@@ -34,6 +34,9 @@ class Transaction(SQLModel, table=True):
     counter_transaction_id: Optional[int] = Field(default=None, foreign_key="transaction.id")
 
     category_id: Optional[int] = Field(default=None, foreign_key="category.id", index=True)
+    # Vorschlag einer Kategorisierungsregel im Modus "nur vorschlagen" - bewusst getrennt von category_id:
+    # die Buchung bleibt unkategorisiert, bis der Vorschlag uebernommen wird (dann wird er geleert).
+    suggested_category_id: Optional[int] = Field(default=None, foreign_key="category.id")
 
     comment: Optional[str] = None
 

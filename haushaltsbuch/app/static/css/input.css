@@ -7,11 +7,31 @@
   --color-accent-hover: #0288d1;
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     Helvetica, Arial, sans-serif;
+
+  /* Neutrale Grauskala statt der blaustichigen Tailwind-"gray"-Palette, an das echte Home-Assistant-
+     Theme angelehnt. Die Werte stammen aus dem HA-Frontend (Version 2026.9, Theme-Definition
+     html{--primary-background-color:#111; --card-background-color:#1c1c1c;
+     --secondary-background-color:#282828; --primary-text-color:#e1e1e1; --secondary-text-color:#9b9b9b;
+     --divider-color:#e1e1e11f} bzw. hell #fafafa / #fff / #e5e5e5). Die App laeuft per Ingress in einem
+     iframe und erbt HAs CSS-Variablen nicht - deshalb fest hinterlegt (nicht zur Laufzeit ausgelesen).
+     Mapping (dark:): 950 = Seitenhintergrund, 900 = Karten/Seitenleiste/Kopfleiste, 800 = Rahmen (~HA-
+     Trennlinie auf Karten) und Hover-Flaechen, 400 = Sekundaertext. Hell: 50 = Seitenhintergrund (HA #fafafa), 200 = Rahmen (#e5e5e5). */
+  --color-gray-50: #fafafa;
+  --color-gray-100: #f5f5f5;
+  --color-gray-200: #e5e5e5;
+  --color-gray-300: #d4d4d4;
+  --color-gray-400: #a3a3a3;
+  --color-gray-500: #737373;
+  --color-gray-600: #525252;
+  --color-gray-700: #404040;
+  --color-gray-800: #333333;
+  --color-gray-900: #1c1c1c;
+  --color-gray-950: #111111;
 }
 
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100;
+    @apply bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-200;
   }
 }
 
@@ -49,6 +69,20 @@
      Klassen sind die EINZIGE Stelle, die eine Dialogbreite setzt. */
   .modal-full {
     @apply mx-auto w-[95vw] max-w-[1600px];
+  }
+
+  /* Ergaenzung zu .modal-wide/.modal-full fuer Formular-Dialoge mit aufklappbarer Tom-Select-Auswahl
+     (z.B. Kategorie-Auswahl): Ein natives <dialog> ist standardmaessig `overflow: auto` - die
+     absolut positionierte Auswahlliste ragt dann ueber den Dialograhmen hinaus und wird abgeschnitten
+     bzw. erzeugt eine Scrollleiste im Dialog. Auf ausreichend hohen Fenstern deshalb `overflow: visible`
+     plus eine Mindesthoehe, die die Liste (max. ~200px) innerhalb des Dialogs unterbringt; auf sehr
+     niedrigen Fenstern bleibt es beim Scrollen im Dialog. Nur zusammen mit .modal-wide/.modal-full
+     verwenden (die Klasse setzt keine Breite). */
+  @media (min-height: 42rem) {
+    .modal-dropdown {
+      overflow: visible;
+      min-height: 30rem;
+    }
   }
 
   .btn-primary {
@@ -167,9 +201,16 @@
     @apply !m-0 !border-0 !bg-transparent !p-0 !shadow-none;
   }
 
+  /* Die dark:-Varianten hier bewusst mit "!": das per CDN geladene tom-select.css ist NICHT in einem
+     @layer und schlaegt deshalb jede geschichtete Regel (unabhaengig von der Spezifitaet) - ohne "!"
+     blieben die Felder im Darkmode weiss. */
   .ts-wrapper .ts-control {
     @apply rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900
-      shadow-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100;
+      shadow-none dark:!border-gray-700 dark:!bg-gray-900 dark:!text-gray-200;
+  }
+
+  .ts-wrapper .ts-control .item {
+    @apply dark:!text-gray-200;
   }
 
   .ts-wrapper.focus .ts-control {
@@ -177,28 +218,29 @@
   }
 
   .ts-dropdown {
-    @apply rounded-lg border border-gray-300 bg-white text-sm shadow-lg dark:border-gray-700
-      dark:bg-gray-900;
+    @apply rounded-lg border border-gray-300 bg-white text-sm shadow-lg dark:!border-gray-700
+      dark:!bg-gray-900;
   }
 
   .ts-dropdown .optgroup-header {
     @apply bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-500
-      dark:bg-gray-800 dark:text-gray-400;
+      dark:!bg-gray-800 dark:!text-gray-400;
   }
 
   .ts-dropdown [data-selectable].option {
-    @apply text-gray-700 dark:text-gray-200;
+    @apply text-gray-700 dark:!text-gray-200;
   }
 
-  .ts-dropdown .option.active {
-    @apply bg-accent/10 text-accent;
+  .ts-dropdown .option.active,
+  .ts-dropdown .active {
+    @apply !bg-accent/10 !text-accent dark:!bg-accent/15;
   }
 
   /* Das innere Such-<input> darf keinen eigenen Rahmen/Schatten haben, sonst entsteht
      im leeren Zustand (bevor ein Item den Großteil der Breite einnimmt) ein sichtbarer
      zweiter Rahmen zusätzlich zu dem von .ts-control. */
   .ts-wrapper .ts-control input {
-    @apply border-0 bg-transparent p-0 shadow-none outline-none ring-0 dark:text-gray-100;
+    @apply border-0 bg-transparent p-0 shadow-none outline-none ring-0 dark:!text-gray-200;
   }
 
   /* Natives <dialog> zentrieren: die ursprüngliche Lösung (nur `margin: auto`, gegen
@@ -450,5 +492,20 @@
   }
   .notices td {
     @apply border-b border-gray-100 px-3 py-2 align-top dark:border-gray-800/60;
+  }
+
+  /* Segmented-Control (Zeitraum-/Modus-Auswahl): eine einzige durchgehende Leiste; nur die aktive Option
+     ist farbig hinterlegt, die uebrigen sind schlichter Text ohne Rahmen/Trennlinien.
+     Markup: templates/_segmented.html. */
+  .segmented {
+    @apply inline-flex max-w-full items-center rounded-full bg-gray-100 p-1 dark:bg-gray-800;
+  }
+  .segmented-item {
+    @apply whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium text-gray-600 transition-colors
+      hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent
+      dark:text-gray-300 dark:hover:text-gray-100;
+  }
+  .segmented-item.is-active {
+    @apply bg-accent text-white shadow-sm hover:text-white dark:hover:text-white;
   }
 }

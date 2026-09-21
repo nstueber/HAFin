@@ -9,6 +9,7 @@ Format (ein JSON-Dokument, ``meta`` steht bewusst zuerst)::
     {"meta": {"format": "haushaltsbuch-backup", "schema_version": 1, "app_version": "...",
               "exported_at": "...", "included_groups": [...], "counts": {...}},
      "accounts": [...], "categories": [...], "mapping_profiles": [...],
+     "categorization_rules": [...], "budgets": [...],
      "transactions": [...], "transaction_splits": [...], "rejected_transfer_pairs": [...]}
 
 Jede Entitaet traegt eine exportinterne Kennung ``export_id`` (UUID); Verknuepfungen zeigen
@@ -16,8 +17,13 @@ auf diese Kennung, nie auf rohe DB-IDs. Beim Import entstehen neue Zeilen, eine 
 tabelle (export_id -> neues Objekt) loest alle Fremdschluessel auf.
 
 Datengruppen (auswaehlbar bei Export UND Import): ``accounts``, ``categories``,
-``mapping_profiles``, ``transactions`` (inkl. Bargeld-Splits und den vom Nutzer abgelehnten
-Umbuchungs-Vorschlaegen). ``transactions`` setzt ``accounts`` + ``categories`` voraus.
+``mapping_profiles``, ``categorization_rules`` (Kategorisierungsregeln in Prioritaetsreihenfolge),
+``budgets`` (Monatsbudgets je Kategorie), ``transactions`` (inkl. Bargeld-Splits und den vom Nutzer
+abgelehnten Umbuchungs-Vorschlaegen). ``transactions`` setzt ``accounts`` + ``categories`` voraus,
+``categorization_rules`` und ``budgets`` setzen ``categories`` voraus.
+
+Die Abschnitte ``categorization_rules`` und ``budgets`` sind optional (aeltere Dateien enthalten sie nicht);
+das Format bleibt dadurch abwaertskompatibel (schema_version unveraendert).
 """
 
 from __future__ import annotations
@@ -32,9 +38,14 @@ from sqlalchemy import delete, func
 from sqlmodel import Session, select
 
 from app.models import (
+    RULE_FIELDS,
+    RULE_MODES,
+    RULE_OPERATORS,
     SYSTEM_CATEGORY_DEFAULT_NAMES,
     Account,
+    CategorizationRule,
     Category,
+    CategoryBudget,
     MappingProfile,
     RejectedTransferPair,
     Transaction,
@@ -49,15 +60,21 @@ BACKUP_FORMAT = "haushaltsbuch-backup"
 SCHEMA_VERSION = 1
 MIN_SCHEMA_VERSION = 1
 
-GROUPS = ("accounts", "categories", "mapping_profiles", "transactions")
+GROUPS = ("accounts", "categories", "mapping_profiles", "categorization_rules", "budgets", "transactions")
 GROUP_LABELS = {
     "accounts": "Konten",
     "categories": "Kategorien",
     "mapping_profiles": "Mapping-Profile",
+    "categorization_rules": "Kategorisierungsregeln",
+    "budgets": "Budgets",
     "transactions": "Buchungen (inkl. Bargeld-Splits)",
 }
-# Abhaengigkeiten: Buchungen referenzieren zwingend Konten und Kategorien.
-REQUIRES = {"transactions": ("accounts", "categories")}
+# Abhaengigkeiten: Buchungen referenzieren zwingend Konten und Kategorien; Regeln und Budgets Kategorien.
+REQUIRES = {
+    "transactions": ("accounts", "categories"),
+    "categorization_rules": ("categories",),
+    "budgets": ("categories",),
+}
 
 CONFIRM_WORD = "LÖSCHEN"
 
@@ -118,6 +135,14 @@ ENTITY_FIELDS: dict[str, list[F]] = {
         F("header_row_index", default=0),
         F("created_at", warn_missing=False),
     ],
+    "categorization_rules": [
+        F("field", required=True),
+        F("operator", required=True),
+        F("value", required=True),
+        F("mode", default="assign", warn_missing=False),
+        F("created_at", warn_missing=False),
+    ],
+    "budgets": [F("monthly_amount", required=True)],
     "transactions": [
         F("booking_date", required=True),
         F("payee", required=True),
@@ -134,9 +159,12 @@ ENTITY_FIELDS: dict[str, list[F]] = {
 # Verweisfelder: name -> (Ziel-Abschnitt, Pflicht?)
 REF_FIELDS: dict[str, dict[str, tuple[str, bool]]] = {
     "categories": {"parent": ("categories", False)},
+    "categorization_rules": {"category": ("categories", True)},
+    "budgets": {"category": ("categories", True)},
     "transactions": {
         "account": ("accounts", True),
         "category": ("categories", False),
+        "suggested_category": ("categories", False),
         "counter_transaction": ("transactions", False),
     },
     "transaction_splits": {
@@ -153,6 +181,8 @@ SECTION_LABELS = {
     "accounts": "Konten",
     "categories": "Kategorien",
     "mapping_profiles": "Mapping-Profile",
+    "categorization_rules": "Kategorisierungsregeln",
+    "budgets": "Budgets",
     "transactions": "Buchungen",
     "transaction_splits": "Bargeld-Splits",
     "rejected_transfer_pairs": "Abgelehnte Umbuchungs-Vorschläge",
@@ -161,6 +191,8 @@ SECTION_GROUP = {
     "accounts": "accounts",
     "categories": "categories",
     "mapping_profiles": "mapping_profiles",
+    "categorization_rules": "categorization_rules",
+    "budgets": "budgets",
     "transactions": "transactions",
     "transaction_splits": "transactions",
     "rejected_transfer_pairs": "transactions",
@@ -245,6 +277,45 @@ def build_export(session: Session, groups: Iterable[str]) -> tuple[dict, dict]:
         ]
         counts["mapping_profiles"] = len(rows)
 
+    if "categorization_rules" in selected:
+        # in Prioritaetsreihenfolge (oberste Regel zuerst) - die Reihenfolge der Liste ist die Prioritaet
+        rows = [
+            r
+            for r in session.exec(
+                select(CategorizationRule).order_by(CategorizationRule.position, CategorizationRule.id)
+            ).all()
+            if r.category_id in category_ids
+        ]
+        doc["categorization_rules"] = [
+            {
+                "export_id": new_id(),
+                "field": r.field,
+                "operator": r.operator,
+                "value": r.value,
+                "mode": r.mode,
+                "category": category_ids[r.category_id],
+                "created_at": _iso(r.created_at),
+            }
+            for r in rows
+        ]
+        counts["categorization_rules"] = len(rows)
+
+    if "budgets" in selected:
+        rows = [
+            b
+            for b in session.exec(select(CategoryBudget).order_by(CategoryBudget.id)).all()
+            if b.category_id in category_ids
+        ]
+        doc["budgets"] = [
+            {
+                "export_id": new_id(),
+                "category": category_ids[b.category_id],
+                "monthly_amount": b.monthly_amount,
+            }
+            for b in rows
+        ]
+        counts["budgets"] = len(rows)
+
     if "transactions" in selected:
         rows = session.exec(
             select(Transaction).order_by(Transaction.booking_date, Transaction.id)
@@ -261,6 +332,7 @@ def build_export(session: Session, groups: Iterable[str]) -> tuple[dict, dict]:
                 "amount": t.amount,
                 "transaction_type": t.transaction_type.value,
                 "category": category_ids.get(t.category_id) if t.category_id else None,
+                "suggested_category": category_ids.get(t.suggested_category_id) if t.suggested_category_id else None,
                 "counter_transaction": transaction_ids.get(t.counter_transaction_id)
                 if t.counter_transaction_id
                 else None,
@@ -378,6 +450,10 @@ def _label(section: str, index: int, values: dict) -> str:
         return f"Kategorie Nr. {n} ('{values.get('name', '?')}')"
     if section == "mapping_profiles":
         return f"Mapping-Profil Nr. {n} ('{values.get('name', '?')}')"
+    if section == "categorization_rules":
+        return f"Regel Nr. {n} ('{values.get('value', '?')}')"
+    if section == "budgets":
+        return f"Budget Nr. {n}"
     if section == "transactions":
         return f"Buchung Nr. {n} ({values.get('booking_date', '?')}, '{values.get('payee', '?')}')"
     if section == "transaction_splits":
@@ -390,6 +466,29 @@ def _coerce(section: str, name: str, value: Any, label: str, problems: list[str]
     try:
         if name == "booking_date":
             return date.fromisoformat(str(value))
+        if name == "monthly_amount":
+            if isinstance(value, bool):
+                raise ValueError("kein Zahlenwert")
+            amount = float(value)
+            if not amount > 0 or amount != amount or amount == float("inf"):
+                raise ValueError("muss größer als 0 sein")
+            return amount
+        if name == "field" and section == "categorization_rules":
+            if value not in RULE_FIELDS:
+                raise ValueError("erlaubt: " + ", ".join(RULE_FIELDS))
+            return value
+        if name == "mode" and section == "categorization_rules":
+            if value not in RULE_MODES:
+                raise ValueError("erlaubt: " + ", ".join(RULE_MODES))
+            return value
+        if name == "operator" and section == "categorization_rules":
+            if value not in RULE_OPERATORS:
+                raise ValueError("erlaubt: " + ", ".join(RULE_OPERATORS))
+            return value
+        if name == "value" and section == "categorization_rules":
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("Text fehlt")
+            return value.strip()
         if name in ("amount", "starting_balance"):
             if value is None:
                 return None
@@ -532,7 +631,8 @@ def parse_backup(raw: bytes) -> ParsedBackup:
             )
         parsed.records[section] = recs
 
-    # 2) Grundregel: Buchungen brauchen Konten UND Kategorien in derselben Datei
+    # 2) Grundregel: Buchungen brauchen Konten UND Kategorien, Regeln/Budgets brauchen Kategorien
+    #    in derselben Datei
     if "transactions" in parsed.records:
         missing = [
             GROUP_LABELS[g] for g in ("accounts", "categories") if g not in parsed.records
@@ -542,6 +642,12 @@ def parse_backup(raw: bytes) -> ParsedBackup:
                 "Die Datei enthält Buchungen, aber keine " + " und keine ".join(missing)
                 + " - Buchungen können ohne diese Daten nicht importiert werden "
                 "(vermutlich mit einer sehr alten Export-Version erstellt)."
+            )
+    for group in ("categorization_rules", "budgets"):
+        if group in parsed.records and "categories" not in parsed.records:
+            problems[group].append(
+                f"Die Datei enthält {GROUP_LABELS[group]}, aber keine Kategorien - sie können ohne "
+                "Kategorien nicht importiert werden."
             )
 
     # 3) eindeutige export_ids und eindeutige natuerliche Schluessel
@@ -565,6 +671,15 @@ def parse_backup(raw: bytes) -> ParsedBackup:
                     f"{rec.label}: {key} '{value}' kommt im Backup mehrfach vor."
                 )
             seen_values.add(value)
+
+    seen_budget_categories: set[str] = set()
+    for rec in parsed.records.get("budgets", []):
+        ref = rec.refs.get("category")
+        if ref is None:
+            continue
+        if ref in seen_budget_categories:
+            problems["budgets"].append(f"{rec.label}: für diese Kategorie gibt es im Backup mehrere Budgets.")
+        seen_budget_categories.add(ref)
 
     # 4) Verweise pruefen
     ids = {s: {r.export_id for r in recs if r.export_id} for s, recs in parsed.records.items()}
@@ -633,6 +748,8 @@ def target_counts(session: Session) -> dict[str, int]:
         # Systemkategorien zaehlen nicht mit: sie bleiben immer bestehen
         "categories": count(Category, Category.system_key.is_(None)),
         "mapping_profiles": count(MappingProfile),
+        "categorization_rules": count(CategorizationRule),
+        "budgets": count(CategoryBudget),
         "transactions": count(Transaction),
         "transaction_splits": count(TransactionSplit),
         "rejected_transfer_pairs": count(RejectedTransferPair),
@@ -647,7 +764,8 @@ def replace_plan(selected: Iterable[str], counts: dict[str, int]) -> dict[str, i
     """Was der Modus "Bestehende Daten ersetzen" fuer diese Auswahl loeschen wuerde.
 
     Werden Konten oder Kategorien ersetzt, muessen auch alle bestehenden Buchungen (samt
-    Splits/abgelehnten Vorschlaegen) weg - sie wuerden sonst auf geloeschte Datensaetze zeigen.
+    Splits/abgelehnten Vorschlaegen) weg - sie wuerden sonst auf geloeschte Datensaetze zeigen;
+    ebenso Regeln und Budgets, wenn Kategorien ersetzt werden.
     """
     selected = set(selected)
     plan = {key: 0 for key in counts}
@@ -657,6 +775,11 @@ def replace_plan(selected: Iterable[str], counts: dict[str, int]) -> dict[str, i
         plan["categories"] = counts["categories"]
     if "mapping_profiles" in selected:
         plan["mapping_profiles"] = counts["mapping_profiles"]
+    # Regeln und Budgets zeigen auf Kategorien: werden Kategorien ersetzt, muessen sie mit weg
+    if selected & {"categories", "categorization_rules"}:
+        plan["categorization_rules"] = counts["categorization_rules"]
+    if selected & {"categories", "budgets"}:
+        plan["budgets"] = counts["budgets"]
     if selected & {"accounts", "categories", "transactions"}:
         for key in ("transactions", "transaction_splits", "rejected_transfer_pairs"):
             plan[key] = counts[key]
@@ -672,6 +795,10 @@ def _delete_existing(session: Session, selected: set[str]) -> None:
         session.exec(delete(Account))
     if "mapping_profiles" in selected:
         session.exec(delete(MappingProfile))
+    if selected & {"categories", "categorization_rules"}:
+        session.exec(delete(CategorizationRule))
+    if selected & {"categories", "budgets"}:
+        session.exec(delete(CategoryBudget))
     if "categories" in selected:
         # Systemkategorien bleiben (feste IDs/system_key), nur ihre Oberkategorie wird geloest
         for cat in session.exec(select(Category).where(Category.system_key.is_not(None))).all():
@@ -864,6 +991,47 @@ def execute_import(
             session.flush()
             report.imported["mapping_profiles"] = imported
 
+        if "categorization_rules" in selected_set:
+            current = "Kategorisierungsregeln"
+            # hinter bereits vorhandene Regeln anhaengen (im Modus "ersetzen" ist die Liste leer);
+            # die Reihenfolge der Datei ist die Prioritaet
+            position = session.exec(select(func.max(CategorizationRule.position))).one() or 0
+            rule_count = 0
+            for rec in parsed.records["categorization_rules"]:
+                v = rec.values
+                position += 1
+                session.add(
+                    CategorizationRule(
+                        position=position,
+                        field=v["field"],
+                        operator=v["operator"],
+                        value=v["value"],
+                        mode=v["mode"],
+                        category_id=categories[rec.refs["category"]].id,
+                        created_at=v.get("created_at") or datetime.utcnow(),
+                    )
+                )
+                rule_count += 1
+            session.flush()
+            report.imported["categorization_rules"] = rule_count
+
+        if "budgets" in selected_set:
+            current = "Budgets"
+            already = set(session.exec(select(CategoryBudget.category_id)).all())
+            budget_count = 0
+            for rec in parsed.records["budgets"]:
+                target = categories[rec.refs["category"]]
+                if target.id in already:
+                    report.warnings.append(
+                        f"Budget für Kategorie '{target.name}' übersprungen: dafür ist bereits ein Budget gesetzt."
+                    )
+                    continue
+                session.add(CategoryBudget(category_id=target.id, monthly_amount=rec.values["monthly_amount"]))
+                already.add(target.id)
+                budget_count += 1
+            session.flush()
+            report.imported["budgets"] = budget_count
+
         if "transactions" in selected_set:
             current = "Buchungen"
             for rec in parsed.records["transactions"]:
@@ -879,6 +1047,9 @@ def execute_import(
                     amount=v["amount"],
                     transaction_type=kind,
                     category_id=categories[rec.refs["category"]].id if rec.refs.get("category") else None,
+                    suggested_category_id=categories[rec.refs["suggested_category"]].id
+                    if rec.refs.get("suggested_category")
+                    else None,
                     comment=v.get("comment"),
                     created_at=v.get("created_at") or datetime.utcnow(),
                 )
@@ -935,3 +1106,25 @@ def execute_import(
             "Es wurden keine Änderungen an der Datenbank vorgenommen."
         ) from exc
     return report
+
+
+# ----------------------------------------------------------------------------------------
+# KOMPLETT-RESET ("Alle Daten loeschen")
+# ----------------------------------------------------------------------------------------
+
+
+def reset_all(session: Session) -> dict[str, int]:
+    """Loescht ALLE fachlichen Daten (Konten, Kategorien ausser den Systemkategorien, Mapping-Profile,
+    Regeln, Budgets, Buchungen samt Splits/abgelehnten Vorschlaegen) in einer Transaktion.
+    Rueckgabe: was geloescht wurde (Zaehler je Abschnitt). Sicherheits-Backup und Bestaetigung sind
+    Sache des Aufrufers."""
+    deleted = target_counts(session)
+    try:
+        _delete_existing(session, set(GROUPS))
+        session.commit()
+    except Exception as exc:  # noqa: BLE001 - zurueckrollen, verstaendlich melden
+        session.rollback()
+        raise ImportFailed(
+            f"Zurücksetzen abgebrochen und zurückgerollt: {exc}. Es wurden keine Daten gelöscht."
+        ) from exc
+    return deleted

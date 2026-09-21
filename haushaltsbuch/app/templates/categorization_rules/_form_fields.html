@@ -1,0 +1,65 @@
+{# Felder einer Kategorisierungsregel - genutzt vom Neu-Dialog (list.html) und der Bearbeiten-Seite (edit.html).
+   Erwartet: form (field/operator/value/category_id), rule_fields, rule_operators, category_groups #}
+<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+  <div>
+    <label class="form-label" for="rule-field-{{ id_suffix }}">Feld</label>
+    <select name="field" id="rule-field-{{ id_suffix }}" class="form-input">
+      {% for key, label in rule_fields.items() %}
+      <option value="{{ key }}" {% if form.field == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="form-label" for="rule-operator-{{ id_suffix }}">Bedingung</label>
+    <select name="operator" id="rule-operator-{{ id_suffix }}" class="form-input">
+      {% for key, label in rule_operators.items() %}
+      <option value="{{ key }}" {% if form.operator == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="form-label" for="rule-value-{{ id_suffix }}">Vergleichswert</label>
+    <input type="text" name="value" id="rule-value-{{ id_suffix }}" required maxlength="200" class="form-input"
+           value="{{ form.value }}" placeholder="z. B. REWE" />
+  </div>
+</div>
+<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Groß-/Kleinschreibung spielt keine Rolle.</p>
+<div class="mt-4">
+  <label class="form-label" for="rule-category-{{ id_suffix }}">Ziel-Kategorie</label>
+  <select name="category_id" id="rule-category-{{ id_suffix }}" required data-searchable class="form-input">
+    <option value="">– Kategorie wählen –</option>
+    {% for group in category_groups %}
+      {% if group.children %}
+      <optgroup label="{{ group.name }}">
+        <option value="{{ group.id }}" {% if form.category_id|string == group.id|string %}selected{% endif %}>{{ group.name }} (allgemein)</option>
+        {% for child in group.children %}
+        <option value="{{ child.id }}" {% if form.category_id|string == child.id|string %}selected{% endif %}>{{ child.name }}</option>
+        {% endfor %}
+      </optgroup>
+      {% else %}
+      <option value="{{ group.id }}" {% if form.category_id|string == group.id|string %}selected{% endif %}>{{ group.name }}</option>
+      {% endif %}
+    {% endfor %}
+  </select>
+</div>
+<fieldset class="mt-4">
+  <legend class="form-label">Zuordnung</legend>
+  <div class="space-y-2">
+    {% for key, label in rule_modes.items() %}
+    <label class="flex cursor-pointer items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+      <input type="radio" name="mode" value="{{ key }}" {% if (form.mode or 'assign') == key %}checked{% endif %}
+             class="mt-0.5 border-gray-300 text-accent focus:ring-accent dark:border-gray-700" />
+      <span>
+        <span class="font-medium">{{ label }}</span>
+        <span class="block text-xs text-gray-500 dark:text-gray-400">
+          {% if key == "assign" %}
+          Die Kategorie wird beim Import sofort gesetzt.
+          {% else %}
+          Die Buchung bleibt unkategorisiert; in der Buchungsliste erscheint „Vorschlag: … übernehmen“.
+          {% endif %}
+        </span>
+      </span>
+    </label>
+    {% endfor %}
+  </div>
+</fieldset>

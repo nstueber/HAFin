@@ -1,3 +1,4 @@
+import math
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import Optional
@@ -7,12 +8,25 @@ from fastapi.responses import HTMLResponse
 from sqlmodel import Session, select
 
 from app.database import get_session
-from app.models import Account, Category, Transaction, TransactionSplit, TransactionType
+from app.models import (
+    Account,
+    Category,
+    CategoryBudget,
+    Transaction,
+    TransactionSplit,
+    TransactionType,
+)
+from app.services.category_tree import category_path
 from app.templating import templates
 
 router = APIRouter(tags=["dashboard"])
 
 GRANULARITIES = ("day", "week", "month", "year")
+TRANSFER_MODES = ("all", "only", "hide")
+# Umbuchungsfilter, wenn die URL keinen ``transfers``-Parameter enthaelt (erstes Laden, Menue-Link "Uebersicht").
+# Der Filterzustand lebt ausschliesslich in der URL (kein localStorage/Cookie) - ein ausdruecklich gewaehlter Wert,
+# auch "all", steht deshalb immer explizit in der URL und wird nie durch den Standard ueberschrieben.
+DEFAULT_TRANSFERS = "hide"
 MONTH_NAMES_DE = [
     "Januar", "Februar", "März", "April", "Mai", "Juni",
     "Juli", "August", "September", "Oktober", "November", "Dezember",
@@ -66,7 +80,7 @@ def _dashboard_url(
     granularity: str, ref: date, transfers: str, account_id: Optional[int]
 ) -> str:
     params = [f"granularity={granularity}", f"ref={ref.isoformat()}"]
-    if transfers != "all":
+    if transfers != DEFAULT_TRANSFERS:
         params.append(f"transfers={transfers}")
     if account_id is not None:
         params.append(f"account_id={account_id}")
@@ -270,19 +284,101 @@ def _category_chart_data(
     }
 
 
+# Schwellwerte der Budget-Farbcodierung (Anteil des Budgets in Prozent)
+BUDGET_WARN_PERCENT = 80  # ab hier gelb
+BUDGET_LIMIT_PERCENT = 100  # darueber rot (genau 100 % ist noch gelb)
+
+
+def _budget_status(percent: float) -> str:
+    if percent > BUDGET_LIMIT_PERCENT:
+        return "over"
+    if percent >= BUDGET_WARN_PERCENT:
+        return "warn"
+    return "ok"
+
+
+def _budget_items(
+    session: Session,
+    start: date,
+    end: date,
+    ref_date: date,
+    granularity: str,
+    categories_by_id: dict,
+) -> list[dict]:
+    """Ist-Ausgaben des Zeitraums gegen die Budgets je Kategorie: bei "month" das Monatsbudget, bei "year"
+    das auf das Jahr hochgerechnete Budget (Monatsbetrag x 12). Andere Zeitraeume haben keine sinnvolle
+    Umrechnung (der Aufrufer blendet den Bereich dort aus).
+
+    Immer ueber alle Konten und OHNE Umbuchungen (Budgets betreffen echte Ausgaben; der Konto-Filter
+    des Dashboards gilt nur fuer das Kategorie-Diagramm). Zaehlung wie beim Kategorie-Diagramm: fuer eine
+    Oberkategorie alles inkl. ihrer Unterkategorien (Roll-up), fuer eine Unterkategorie nur ihre eigenen
+    Buchungen - Bargeld-Splits werden beruecksichtigt. Eine Unterkategorie zaehlt also zugleich in ihr
+    eigenes Budget und (falls gesetzt) in das der Oberkategorie.
+    """
+    months = 12 if granularity == "year" else 1
+    budgets = {b.category_id: b.monthly_amount for b in session.exec(select(CategoryBudget)).all()}
+    if not budgets:
+        return []
+    txns = _period_transactions(session, start, end, "hide")
+    entries = _category_entries(
+        txns, categories_by_id, _splits_by_transaction(session, [t.id for t in txns])
+    )
+    by_actual: dict = defaultdict(float)
+    by_top: dict = defaultdict(float)
+    for e in entries:
+        by_actual[e["category_id"]] += e["amount"]
+        by_top[e["top_category_id"]] += e["amount"]
+
+    items = []
+    for category_id, budget in budgets.items():
+        category = categories_by_id.get(category_id)
+        if category is None or budget <= 0:
+            continue
+        is_top_level = category.parent_id is None
+        net = (by_top if is_top_level else by_actual).get(category_id, 0.0)
+        # In ganzen Cent rechnen (Float-Summen wie 79.99999999 duerfen keine Schwelle verfehlen);
+        # Erstattungen mindern die Ausgaben, ein Guthaben ergibt kein "negatives" Ausgeben.
+        spent_cents = max(0, round(-net * 100))
+        budget_cents = round(budget * months * 100)
+        spent = spent_cents / 100
+        percent = spent_cents * 100 / budget_cents
+        status = _budget_status(percent)
+        items.append(
+            {
+                "category_id": category_id,
+                "label": category_path(category, categories_by_id),
+                "budget": budget_cents / 100,
+                "monthly": budget,
+                "spent": spent,
+                "percent": percent,
+                # Anzeige passt zur Farbe: ueberzogen wird aufgerundet (nie "100 %" in Rot), sonst abgerundet
+                # (nie "80 %" in Gruen)
+                "percent_label": math.ceil(percent) if status == "over" else math.floor(percent),
+                "bar_width": min(percent, 100.0),
+                "remaining": budget_cents / 100 - spent,
+                "status": status,
+                "url": _drilldown_url(
+                    granularity, ref_date, "hide", None, "category", str(category_id), exact=not is_top_level
+                ),
+            }
+        )
+    items.sort(key=lambda i: (-i["percent"], i["label"]))
+    return items
+
+
 @router.get("/", response_class=HTMLResponse)
 def dashboard(
     request: Request,
     granularity: str = "month",
     ref: Optional[str] = None,
-    transfers: str = "all",
+    transfers: str = DEFAULT_TRANSFERS,
     account_id: str = "",
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     if granularity not in GRANULARITIES:
         granularity = "month"
-    if transfers not in ("all", "only", "hide"):
-        transfers = "all"
+    if transfers not in TRANSFER_MODES:
+        transfers = DEFAULT_TRANSFERS
     # Das Konto-Filter-<select> submitted bei "Alle Konten" einen leeren String
     # (nicht abwesend) - "" laesst sich nicht direkt in int parsen.
     account_id_int = int(account_id) if account_id else None
@@ -333,6 +429,14 @@ def dashboard(
     prev_ref = _shift_ref(granularity, start, -1)
     next_ref = _shift_ref(granularity, start, 1)
 
+    # Budgets sind monatliche Werte: in der Monatsansicht direkt, in der Jahresansicht x 12; bei Tag/Woche
+    # gibt es keine sinnvolle Umrechnung (das Template blendet den Bereich dann aus)
+    budget_items = (
+        _budget_items(session, start, end, ref_date, granularity, categories_by_id)
+        if granularity in ("month", "year")
+        else []
+    )
+
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -347,9 +451,7 @@ def dashboard(
             "url_prev": _dashboard_url(granularity, prev_ref, transfers, account_id_int),
             "url_next": _dashboard_url(granularity, next_ref, transfers, account_id_int),
             "transfers": transfers,
-            "url_transfers_all": _dashboard_url(granularity, ref_date, "all", account_id_int),
-            "url_transfers_only": _dashboard_url(granularity, ref_date, "only", account_id_int),
-            "url_transfers_hide": _dashboard_url(granularity, ref_date, "hide", account_id_int),
+            "budget_items": budget_items,
             "total_tile": total_tile,
             "account_tiles": account_tiles,
             "accounts": accounts,
@@ -365,7 +467,7 @@ def dashboard_transactions(
     request: Request,
     granularity: str = "month",
     ref: Optional[str] = None,
-    transfers: str = "all",
+    transfers: str = DEFAULT_TRANSFERS,
     account_id: str = "",
     kind: str = "net",
     category: str = "",
@@ -378,8 +480,8 @@ def dashboard_transactions(
     """
     if granularity not in GRANULARITIES:
         granularity = "month"
-    if transfers not in ("all", "only", "hide"):
-        transfers = "all"
+    if transfers not in TRANSFER_MODES:
+        transfers = DEFAULT_TRANSFERS
     if kind not in ("income", "expense", "net", "category"):
         kind = "net"
     account_id_int = int(account_id) if account_id else None

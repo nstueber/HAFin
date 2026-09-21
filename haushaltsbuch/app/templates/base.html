@@ -1,7 +1,7 @@
 {% from "_icons.html" import sun, moon, dashboard, upload, banknotes, cog, arrow_left %}
 {# Unterseiten des Einstellungen-Bereichs: dort ist "Einstellungen" in der Navigation aktiv und oben
    erscheint der Zurueck-Link zur Hub-Seite #}
-{% set settings_children = ['accounts', 'categories', 'mapping_profiles', 'backup', 'licenses'] %}
+{% set settings_children = ['accounts', 'categories', 'mapping_profiles', 'rules', 'budgets', 'backup', 'licenses'] %}
 {% set current_nav = 'settings' if (active_nav == 'settings' or active_nav in settings_children) else active_nav %}
 
 {% macro nav_item(href, icon_html, label, key, active_nav, layout, short=none) %}
@@ -42,12 +42,12 @@
   </script>
   <title>{% block page_title %}{{ title }} – Haushaltsbuch{% endblock %}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/css/tom-select.min.css" />
-  <link rel="stylesheet" href="/static/css/app.css" />
-  <script src="/static/js/htmx.min.js"></script>
-  <script src="/static/js/theme.js"></script>
+  <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}" />
+  <script src="/static/js/htmx.min.js?v={{ app_version }}"></script>
+  <script src="/static/js/theme.js?v={{ app_version }}"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/list.js/2.3.1/list.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/js/tom-select.complete.min.js"></script>
-  <script src="/static/js/enhancements.js"></script>
+  <script src="/static/js/enhancements.js?v={{ app_version }}"></script>
   {% block extra_head %}{% endblock %}
 </head>
 <body class="h-full font-sans antialiased">

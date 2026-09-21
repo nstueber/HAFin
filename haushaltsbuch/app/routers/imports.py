@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 from app.database import get_session
 from app.models import Account, MappingProfile, Transaction, TransactionType
 from app.services.csv_detection import parse_from_header, parse_transaction_rows
+from app.services.rules import apply_rule_to_transaction, find_matching_rule, load_rules
 from app.templating import templates
 
 router = APIRouter(prefix="/import", tags=["import"])
@@ -106,8 +107,13 @@ async def run_import(
     )
 
     imported = 0
+    auto_categorized = 0  # Regel im Modus "fest zuweisen"
+    auto_suggested = 0  # Regel im Modus "nur vorschlagen"
     duplicates: list[dict] = []
     errors: list[dict] = []
+    # Regeln (Prioritaetsreihenfolge) einmal laden; sie gelten nur fuer NEU importierte Buchungen -
+    # Duplikate werden weiter oben uebersprungen und bestehende Buchungen nie angefasst.
+    rules = load_rules(session)
 
     for index, parsed in enumerate(parsed_rows, start=1):
         if parsed.error:
@@ -138,16 +144,22 @@ async def run_import(
             continue
 
         transaction_type = TransactionType.EINGANG if parsed.amount > 0 else TransactionType.AUSGANG
-        session.add(
-            Transaction(
-                account_id=account_id,
-                booking_date=parsed.booking_date,
-                payee=parsed.payee,
-                purpose=parsed.purpose,
-                amount=parsed.amount,
-                transaction_type=transaction_type,
-            )
+        new_txn = Transaction(
+            account_id=account_id,
+            booking_date=parsed.booking_date,
+            payee=parsed.payee,
+            purpose=parsed.purpose,
+            amount=parsed.amount,
+            transaction_type=transaction_type,
         )
+        rule = find_matching_rule(rules, parsed.payee, parsed.purpose)
+        if rule:
+            apply_rule_to_transaction(new_txn, rule)
+            if rule.mode == "suggest":
+                auto_suggested += 1
+            else:
+                auto_categorized += 1
+        session.add(new_txn)
         imported += 1
 
     session.commit()
@@ -162,6 +174,8 @@ async def run_import(
             "profile": profile,
             "total_rows": len(parsed_rows),
             "imported": imported,
+            "auto_categorized": auto_categorized,
+            "auto_suggested": auto_suggested,
             "duplicates": duplicates,
             "errors": errors,
         },
@@ -190,6 +204,9 @@ async def force_import_duplicates(
     """
     selected = set(selected_rows)
     imported_rows: list[int] = []
+    rules = load_rules(session)
+    auto_categorized = 0
+    auto_suggested = 0
     for row, date_str, payee, purpose, amount_str in zip(
         all_row, all_date, all_payee, all_purpose, all_amount
     ):
@@ -201,22 +218,30 @@ async def force_import_duplicates(
         except ValueError:
             continue
         transaction_type = TransactionType.EINGANG if amount > 0 else TransactionType.AUSGANG
-        session.add(
-            Transaction(
-                account_id=account_id,
-                booking_date=booking_date,
-                payee=payee,
-                purpose=purpose or None,
-                amount=amount,
-                transaction_type=transaction_type,
-            )
+        new_txn = Transaction(
+            account_id=account_id,
+            booking_date=booking_date,
+            payee=payee,
+            purpose=purpose or None,
+            amount=amount,
+            transaction_type=transaction_type,
         )
+        rule = find_matching_rule(rules, payee, purpose or None)
+        if rule:
+            apply_rule_to_transaction(new_txn, rule)
+            if rule.mode == "suggest":
+                auto_suggested += 1
+            else:
+                auto_categorized += 1
+        session.add(new_txn)
         imported_rows.append(row)
     session.commit()
 
     count = len(imported_rows)
     message = (
         f"{count} Buchung{'en' if count != 1 else ''} trotzdem importiert."
+        + (f" {auto_categorized} davon automatisch kategorisiert." if auto_categorized else "")
+        + (f" Für {auto_suggested} liegt ein Kategorie-Vorschlag vor." if auto_suggested else "")
         if count
         else "Keine Zeile ausgewählt."
     )

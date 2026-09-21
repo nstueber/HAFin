@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% macro budget_row(cat, indent=false) %}
+<div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 py-2.5 last:border-0 dark:border-gray-800/60 {{ 'pl-6' if indent else '' }}">
+  <label for="budget-{{ cat.id }}" class="min-w-0 flex-1 {{ 'text-sm text-gray-700 dark:text-gray-300' if indent else 'font-medium text-gray-900 dark:text-gray-100' }}">
+    {{ cat.name }}
+    {% if cat.system_key %}<span class="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:bg-gray-800 dark:text-gray-400">System</span>{% endif %}
+  </label>
+  <div class="flex items-center gap-2">
+    <input type="text" inputmode="decimal" autocomplete="off" id="budget-{{ cat.id }}" name="budget_{{ cat.id }}"
+           value="{{ values.get(cat.id, '') }}" placeholder="kein Budget"
+           class="form-input w-36 !py-1.5 text-right font-mono" />
+    <span class="w-14 text-xs text-gray-500 dark:text-gray-400">€ / Monat</span>
+  </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+{% if saved %}
+<div class="alert-error !border-green-200 !bg-green-50 !text-green-700 dark:!border-green-900 dark:!bg-green-950/40 dark:!text-green-400">
+  Budgets gespeichert.
+</div>
+{% endif %}
+{% if form_error %}
+<div class="alert-error">{{ form_error }}</div>
+{% endif %}
+
+<div class="card">
+  <h2 class="text-base font-semibold">Budgets pro Kategorie</h2>
+  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    Lege für Ober- und Unterkategorien jeweils einen <strong class="font-medium">monatlichen</strong> Betrag fest –
+    leer oder 0 bedeutet „kein Budget“. Im Dashboard erscheint der Fortschritt bei den Zeiträumen „Monat“ und „Jahr“ (dort Monatsbetrag × 12).
+    Ausgaben einer Unterkategorie zählen auch in das Budget ihrer Oberkategorie, falls dafür ebenfalls eines gesetzt ist.
+  </p>
+
+  {% if tree %}
+  <form method="post" action="/budgets" class="mt-4">
+    <div>
+      {% for node in tree %}
+      {{ budget_row(node.cat) }}
+      {% for child in node.children %}
+      {{ budget_row(child, indent=true) }}
+      {% endfor %}
+      {% endfor %}
+    </div>
+    <div class="mt-5 flex items-center gap-3">
+      <button type="submit" class="btn-primary">Budgets speichern</button>
+      <span class="text-xs text-gray-500 dark:text-gray-400">{{ budget_count }} Budget{{ 's' if budget_count != 1 else '' }} gesetzt</span>
+    </div>
+  </form>
+  {% else %}
+  <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">
+    Es gibt noch keine Kategorien. <a href="/categories" class="text-accent underline">Kategorien anlegen</a>
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

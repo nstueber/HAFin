@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_icons.html" import sparkles %}
+
+{% block content %}
+<div class="card">
+  <h2 class="flex items-center gap-2 text-base font-semibold">{{ sparkles("h-4 w-4 text-accent") }} Regeln auf bestehende Buchungen anwenden</h2>
+  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    Vorschau: Die Regeln treffen auf <strong class="font-medium text-gray-700 dark:text-gray-200">{{ rows|length }}</strong> von
+    {{ uncategorized_total }} unkategorisierten Buchungen zu. Nichts wird geändert, bevor du unten bestätigst – einzelne Treffer
+    kannst du abwählen. Bereits kategorisierte Buchungen und Umbuchungen bleiben unberührt.
+  </p>
+
+  {% if rows %}
+  <form method="post" action="/categorization-rules/apply" id="apply-form" class="mt-4">
+    <div class="mb-2 flex flex-wrap items-center gap-3 text-sm">
+      <button type="button" class="text-accent hover:underline" data-select="all">Alle auswählen</button>
+      <span class="text-gray-300 dark:text-gray-700" aria-hidden="true">|</span>
+      <button type="button" class="text-accent hover:underline" data-select="none">Keine auswählen</button>
+      <span class="ml-auto text-gray-500 dark:text-gray-400"><span id="apply-selected-count">{{ rows|length }}</span> von {{ rows|length }} ausgewählt</span>
+    </div>
+    <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
+      <table class="table-base table-stack">
+        <thead>
+          <tr>
+            <th class="w-8"></th>
+            <th>Buchung</th>
+            <th class="text-right">Betrag</th>
+            <th>Regel</th>
+            <th>Kategorie</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td>
+              <input type="checkbox" name="hit" value="{{ r.txn.id }}:{{ r.rule.id }}" checked aria-label="Treffer übernehmen"
+                     class="apply-hit rounded border-gray-300 text-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-900" />
+            </td>
+            <td data-label="Buchung">
+              <div class="font-medium text-gray-900 dark:text-gray-100">{{ r.txn.payee }}</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400"><span class="font-mono">{{ r.txn.booking_date.isoformat() }}</span> · {{ r.txn.purpose or "–" }}</div>
+            </td>
+            <td class="whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if r.txn.amount > 0 else '' }}" data-label="Betrag">{{ r.txn.amount|format_currency }}</td>
+            <td class="text-xs text-gray-600 dark:text-gray-300" data-label="Regel">{{ r.rule_text }}</td>
+            <td class="text-xs" data-label="Kategorie">
+              → {{ r.category_path }}
+              {% if r.is_suggestion %}<span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">nur Vorschlag</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-5 flex flex-wrap items-center gap-3">
+      <button type="submit" id="apply-submit" class="btn-primary disabled:cursor-not-allowed disabled:opacity-50"><span>Ausgewählte anwenden (<span id="apply-submit-count">{{ rows|length }}</span>)</span></button>
+      <a href="/categorization-rules" class="btn-outline">Abbrechen</a>
+    </div>
+  </form>
+  <script>
+    (function () {
+      var form = document.getElementById("apply-form");
+      var boxes = form.querySelectorAll("input.apply-hit");
+      var counts = [document.getElementById("apply-selected-count"), document.getElementById("apply-submit-count")];
+      var submit = document.getElementById("apply-submit");
+      function refresh() {
+        var n = 0; boxes.forEach(function (b) { if (b.checked) n++; });
+        counts.forEach(function (c) { c.textContent = n; });
+        submit.disabled = n === 0;
+      }
+      form.addEventListener("change", refresh);
+      form.querySelectorAll("[data-select]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var all = btn.getAttribute("data-select") === "all";
+          boxes.forEach(function (b) { b.checked = all; });
+          refresh();
+        });
+      });
+      refresh();
+    })();
+  </script>
+  {% else %}
+  <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">Aktuell trifft keine Regel auf eine unkategorisierte Buchung zu.</p>
+  <a href="/categorization-rules" class="btn-outline mt-4">Zurück zu den Regeln</a>
+  {% endif %}
+</div>
+{% endblock %}

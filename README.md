@@ -97,8 +97,8 @@ haushaltsbuch/                die Home-Assistant-App
   requirements.txt
   app/
     models/       SQLModel-Datenmodelle (Konten, Kategorien, Mapping-Profile, Transaktionen)
-    routers/      accounts, transactions, categories, mapping_profiles, imports (CSV-Import)
-    services/     CSV-Erkennungslogik + Parsing (Encoding, Trennzeichen, Dezimaltrennzeichen, Datumsformat)
+    routers/      accounts, transactions, categories, categorization_rules, budgets, mapping_profiles, imports (CSV-Import), backup, settings
+    services/     CSV-Erkennungslogik + Parsing, Backup (Export/Import/Reset), Kategorisierungsregeln, Kategorienbaum
     templates/    Jinja2-Templates (inkl. _icons.html mit Heroicons-SVG-Makros)
     static/       JS (htmx, Theme-Toggle), CSS (input.css = Quelle, app.css = generiert)
     database.py   DB-Engine & Session, leichte Auto-Migration für neue Spalten
@@ -183,16 +183,37 @@ Das Hauptmenü hat nur vier Einträge (Übersicht, Buchungen, Import, Einstellun
 Varianten in `base.html` (Desktop-Sidebar, Tablet-Icon-Rail, mobile Bottom-Nav) aus denselben
 `nav_item(...)`-Aufrufen. **"Einstellungen" ist ein normaler Eintrag ohne Flyout/Untermenü** und führt auf die Hub-Seite
 `GET /settings` (`app/routers/settings.py`, `templates/settings/index.html`): Kacheln (Icon + Titel +
-Beschreibung, mobil untereinander, ab `md` zweispaltig) zu Konten, Kategorien, Mapping-Profilen und Backup &
-Restore - analog zum Einstellungen-Bereich von Home Assistant. Die Routen der Unterseiten (`/accounts`,
-`/categories`, `/mapping-profiles`, `/backup`) sind unverändert.
+Beschreibung, mobil untereinander, ab `md` zweispaltig) zu Konten, Kategorien, Kategorisierungsregeln, Budgets,
+Mapping-Profilen und Backup & Restore - analog zum Einstellungen-Bereich von Home Assistant. Die Routen der
+Unterseiten (`/accounts`, `/categories`, `/categorization-rules`, `/budgets`, `/mapping-profiles`, `/backup`) sind
+unverändert.
 
 **Aktiv-Zustand & Zurück-Link zentral in `base.html`:** die Liste `settings_children` (`active_nav`-Schlüssel
-`accounts`, `categories`, `mapping_profiles`, `backup`) markiert "Einstellungen" als aktiv (`current_nav`) und blendet
+`accounts`, `categories`, `mapping_profiles`, `rules`, `budgets`, `backup`, `licenses`) markiert "Einstellungen" als aktiv (`current_nav`) und blendet
 über dem Inhalt automatisch den Link "← Einstellungen" ein - für jede Seite, die eines dieser `active_nav`-Werte setzt
 (auch Bearbeiten-/Wizard-/Ergebnis-/Fehlerseiten). Eine neue Unterseite der Einstellungen braucht also nur den passenden
 `active_nav` (und einen Eintrag in `settings_children`, falls es ein neuer Schlüssel ist) plus kachel im Hub.
 Mobil (Bottom-Nav) haben vier Einträge wieder Platz für Beschriftungen (auch bei 320px ohne Abschneiden geprüft).
+
+### DEV-Buildnummer
+
+`config.yaml` trägt die Release-Version (`0.3.1`). Für DEV-Stände in der HA-Testinstanz und im lokalen Docker-Image gibt es
+`bash .devcontainer/sync-dev-app.sh --dev-build`: setzt `version: "<Basis>-dev.<N>"` und kommentiert `image:` aus (lokaler Build). `N`
+zählt bei **jedem** Aufruf hoch (Zähler `.devcontainer/.dev-build-number`, gitignored; neue Basisversion → wieder ab 1) - so ist jeder DEV-Stand
+für Supervisor eine neue Version ("Update verfügbar") und die Buildnummer ist in der App sichtbar (Sidebar/Hub/`meta.app_version`; auch beim
+lokalen `docker build`, weil `app/version.py` die `config.yaml` im Image liest). Vor Commit/Release `--reset` (Basisversion, `image:` aktiv; der
+Release-Workflow lehnt ein auskommentiertes `image:` ab). Die Pre-Release-Version `0.3.1-dev.N` ist nach SemVer kleiner als `0.3.1` - das
+spätere Release-Update wird von Supervisor daher als Update erkannt.
+
+### Cache der statischen Dateien
+
+Hinter dem HA-Ingress bleibt die URL (`/api/hassio_ingress/<token>/static/...`) über App-Updates hinweg gleich; ohne
+Cache-Header hält ein Browser ein altes `app.css`/`enhancements.js` heuristisch (Last-Modified) noch eine Weile
+vor - nach einem Update erschienen neue Seiten dann ungestylt (so geschehen bei der Lizenzseite in 0.2.0). Deshalb:
+`base.html` hängt an alle lokalen Assets `?v={{ app_version }}`, und `RevalidatingStaticFiles` (`main.py`) sendet
+`Cache-Control: no-cache` (Revalidierung per ETag, 304). Neue lokale Assets in Templates immer mit `?v={{ app_version }}`
+einbinden. Reproduktion/Test: `~/hafin-test-data/scripts/repro_static_cache_*.py` (Browser-Profil mit altem Image
+aufwärmen, dann neues Image auf derselben URL).
 
 ### Version & Lizenzinformationen
 
@@ -422,6 +443,55 @@ ergänzt), direkt im Detail-Dialog editierbar (`POST /transactions/{id}/comment`
 Feld ist, das die Duplikat-Erkennung nutzt, und deshalb auch für Buchungen
 editierbar bleibt, die Teil einer Umbuchung sind (kein Sperrhinweis nötig).
 
+## Kategorisierungsregeln (automatische Kategorisierung beim Import)
+
+Verwaltung unter Einstellungen → Kategorisierungsregeln (`app/routers/categorization_rules.py`, Modell
+`CategorizationRule`, Logik in `app/services/rules.py`). Eine Regel = Feld (Verwendungszweck | Auftraggeber/Empfänger),
+Bedingung (enthält | beginnt mit | ist exakt), Vergleichswert, Ziel-Kategorie. Abgleich **ohne Beachtung von
+Groß-/Kleinschreibung**, Leerraum am Rand wird ignoriert und mehrfache Leerzeichen werden zusammengefasst; ein leerer
+Vergleichswert trifft nie. Ziel darf jede Kategorie außer der Systemkategorie "Umbuchung" sein (Bargeld ist erlaubt).
+
+**Priorität:** `position` (1 = oben = höchste); bei mehreren Treffern gewinnt die erste Regel (`find_matching_rule`).
+Verschieben über Auf/Ab-Pfeile (htmx, `POST /categorization-rules/{id}/move?direction=up|down`, lückenlose
+Neunummerierung); neue Regeln kommen ans Ende. Kein Drag&Drop (Pfeile funktionieren auch mobil/mit Tastatur).
+
+**Modus je Regel** (`CategorizationRule.mode`): `assign` ("Kategorie fest zuweisen", Standard) oder `suggest` ("Nur als
+Vorschlag anzeigen"). Bei `suggest` bleibt die Buchung unkategorisiert (erscheint weiter im Filter "nur unkategorisierte"),
+die Regel hinterlegt die Kategorie in einem **eigenen Feld** `Transaction.suggested_category_id`. Die Buchungsliste zeigt
+sie wie den bisherigen History-Vorschlag als "Vorschlag: X übernehmen" unter der leeren Kategorie-Zelle (Ein-Klick
+über denselben Endpunkt `POST /transactions/{id}/category`); der Regel-Vorschlag hat Vorrang vor dem History-Vorschlag.
+Sobald eine Kategorie gesetzt wird (Übernehmen, manuell, Mehrfachauswahl), wird der Vorschlag gelöscht; wird die Kategorie
+nur geleert, bleibt er. Beim Löschen einer Kategorie werden Vorschläge auf sie entfernt. Die erste passende Regel
+gewinnt unabhängig vom Modus (`apply_rule_to_transaction()`).
+
+**Anwendung:** beim CSV-Import (`imports.py`, auch bei "trotzdem importieren") nur für **neu** angelegte Buchungen -
+Duplikate werden vorher übersprungen, bestehende Buchungen nie angefasst. Die Ergebnisseite nennt "davon N automatisch
+kategorisiert" und "M mit Kategorie-Vorschlag". Greift keine Regel, bleibt alles wie zuvor (der History-Vorschlag in der
+Liste ist unverändert). **Rückwirkend mit Vorschau:** `GET /categorization-rules/apply` listet die Treffer auf bestehende
+**unkategorisierte**, nicht-Umbuchungs-Buchungen (`find_rule_hits()`; Buchung + Regel + Kategorie + Modus), je Treffer eine
+Checkbox (standardmäßig alle angehakt, "Alle/Keine auswählen", Zähler im Button); erst `POST /categorization-rules/apply`
+(`hit` = `<Buchungs-ID>:<Regel-ID>`) ändert etwas. Serverseitig wird jeder Treffer vor dem Anwenden erneut geprüft (Buchung
+noch unkategorisiert und dieselbe Regel noch die erste passende, sonst "übersprungen" im Banner); ein Vorschlag, den eine
+Buchung schon trägt, ist kein Treffer (Idempotenz). Ohne `hit` passiert nichts. Die Regelseite zeigt nur noch "Trifft
+aktuell auf X von Y" (Y = unkategorisierte Nicht-Umbuchungen) und den Link zur Vorschau.
+
+**Schnellaktion** im Buchungs-Detailfenster: "Regel aus dieser Buchung erstellen" öffnet
+`/categorization-rules?from_transaction=<id>`: Neu-Dialog offen und vorbelegt (Verwendungszweck bzw. bei leerem
+Zweck Auftraggeber, "enthält", Kategorie der Buchung), mit Buttons zum Übernehmen von Zweck oder Auftraggeber. Ein `change` des Feld-Dropdowns setzt den
+Vergleichswert auf den passenden Text der Buchung (`data-src-<feld>`-Attribute am `<dialog>`, nur mit Buchungsbezug; ohne
+Bezug bleibt der Wert unberührt). Ein bereits von Hand geänderter Wert wird dabei bewusst überschrieben: er gehörte zum vorherigen
+Feld, der Dialog ist ein Schnellstart, das Feld bleibt frei editierbar und die Übernehmen-Buttons setzen Feld + Wert gemeinsam.
+
+Beim **Löschen einer Kategorie** werden Regeln mit dieser Ziel-Kategorie und ihr Budget mitgelöscht (der
+Bestätigungsdialog nennt das). Im Backup ist alles als Gruppe `categorization_rules` enthalten (siehe unten).
+
+## Budgets pro Kategorie
+
+Einstellungen → Budgets (`app/routers/budgets.py`): eine Zeile je Kategorie (Baum, ohne "Umbuchung") mit Monatsbetrag;
+leer oder 0 = kein Budget (Datensatz wird gelöscht). Eingabe mit Komma oder Punkt (`1.234,50`); ein ungültiger Betrag
+verhindert das Speichern **aller** Werte (Fehlermeldung, Eingaben bleiben stehen). Die Auswertung steht im Dashboard
+(siehe dort).
+
 ## Backup & Restore (portables JSON-Backup)
 
 Seite "Backup & Restore" (erreichbar über Einstellungen → Kachel; `app/routers/backup.py`, Logik in `app/services/backup.py`,
@@ -445,18 +515,38 @@ die Fremdschlüssel auf (Umbuchungs-Gegenbuchungen in einem zweiten Durchlauf, w
 Flush existiert). **Nicht** exportiert: eine Buchung→Mapping-Profil-Zuordnung (existiert im Datenmodell
 nicht - Profile werden nur beim Import gewählt).
 
-**Datengruppen** (Checkboxen bei Export UND Import): Konten, Kategorien, Mapping-Profile, Buchungen
-(= Buchungen + Bargeld-Splits + abgelehnte Umbuchungs-Vorschläge; letztere gehören nicht zur Aufzählung im
-Auftrag, würden aber sonst bei einem Umzug stillschweigend verloren gehen und "Keine Umbuchung"-Entscheidungen
-rückgängig machen). Abhängigkeit `transactions → accounts + categories` (`REQUIRES` im Service): erzwungene
+**Datengruppen** (Checkboxen bei Export UND Import): Konten, Kategorien, Mapping-Profile, Kategorisierungsregeln,
+Budgets, Buchungen (= Buchungen + Bargeld-Splits + abgelehnte Umbuchungs-Vorschläge; letztere gehören nicht zur
+Aufzählung im Auftrag, würden aber sonst bei einem Umzug stillschweigend verloren gehen und "Keine Umbuchung"-
+Entscheidungen rückgängig machen). Regeln (`categorization_rules`, in Prioritätsreihenfolge) und Budgets (`budgets`)
+sind **optionale** Abschnitte: ältere Dateien ohne sie bleiben importierbar (Gruppe dann "nicht enthalten"), die
+`schema_version` bleibt 1. Beim Import werden Regeln hinter bereits vorhandene angehängt, ein vorhandenes Budget einer
+Kategorie wird nicht überschrieben (Warnung). Optionale Felder: `mode` der Regeln (`assign`|`suggest`, fehlend =
+`assign`) und `suggested_category` (Verweis) an Buchungen. Wird beim Ersetzen die Gruppe Kategorien ersetzt, gehen Regeln und
+Budgets mit verloren (sie zeigen auf Kategorien) - die Import-Vorschau weist darauf hin. Abhängigkeiten
+`transactions → accounts + categories` sowie `categorization_rules`/`budgets → categories` (`REQUIRES` im Service): erzwungene
 Gruppen sind angehakt+deaktiviert mit Hinweis (JS `hafinSyncGroupDeps` in `enhancements.js`), der Server
 ergänzt sie zusätzlich selbst (`with_dependencies`). Enthält eine Datei Buchungen ohne Konten/Kategorien
 (sehr alte Exportversion), wird nur die Buchungsgruppe mit klarem Fehlertext gesperrt.
+
+**Import-Modus:** es ist immer genau **einer** wählbar und vorausgewählt - Zieldatenbank leer (keine Konten, keine
+Buchungen) → "In leere Datenbank importieren" (Ersetzen ausgegraut mit Hinweis), sonst → "Bestehende Daten ersetzen"
+(mit sofort sichtbarem `LÖSCHEN`-Feld; "In leere Datenbank" ausgegraut). Nur die Oberfläche erzwingt das; der Server lässt
+"ersetzen" auf leerer DB weiterhin zu (harmlos) und lehnt "leer" auf gefüllter DB ab.
 
 **Systemkategorien** werden beim Import nie neu angelegt, sondern über `system_key` mit den vorhandenen
 verknüpft (`_system_category()` - bewusst eine Variante OHNE Commit, siehe Transaktion); auch ihre
 Oberkategorie aus dem Backup wird übernommen (in echten Daten hängt "Bargeld" unter einer Oberkategorie).
 Alte Backups ohne `system_key` werden anhand des Default-Namens zugeordnet (mit Warnung).
+
+**Alle Daten löschen (Reset):** eigene, rot abgesetzte Karte auf der Backup-Seite (`POST /backup/reset`, JSON über
+`Accept: application/json`). Gleiches Sicherheitsniveau wie der Import-Modus "ersetzen": Verlust-Zusammenfassung mit
+Zählern, Pflichteingabe des Worts `LÖSCHEN` (Button bis dahin deaktiviert, serverseitig erneut geprüft), **vor dem
+Löschen** ein Sicherheits-Backup des kompletten Bestands (gleiche Ablage/Aufbewahrung wie beim Ersetzen,
+Download auf der Ergebnisseite), dann `reset_all()` in einer Transaktion. Gelöscht wird alles außer den beiden
+Systemkategorien (deren Oberkategorie wird gelöst). Die Bestätigungs-Box ist als Macro `danger_panel`
+(`templates/backup/_danger.html`) für beide Stellen gemeinsam; das Prüfen des Worts übernimmt
+`hafinConfirmWordOk()` in `enhancements.js`. Bei leerer Datenbank bleibt der Button deaktiviert.
 
 **Toleranz**: fehlende optionale Felder (z.B. `comment` in alten Backups) bekommen Defaults, unbekannte Felder
 werden ignoriert - beides als Warnung im Report. Pflichtfelder, ungültige Werte, defekte Referenzen,
@@ -653,9 +743,31 @@ Ziel-Monats/-Jahres normalisiert, nicht "gleicher Tag im Vormonat", um
 Edge-Cases wie den 31. zu vermeiden). Wechselt man nur die Granularität, bleibt
 der bisherige Anker-Tag erhalten und der neue Zeitraum wird um diesen Tag herum
 berechnet (z.B. Monat "September 2026" → Woche zeigt die Woche, die der 1.
-September enthält). Derselbe 3-Zustands-Umbuchungsfilter wie in der
-Buchungsansicht (Alle/Nur Umbuchungen/Ohne Umbuchungen) wirkt auf alle
-Kennzahlen unten.
+September enthält). Die Granularität wird als **Segmented-Control** dargestellt
+(Komponente `templates/_segmented.html` + `.segmented`/`.segmented-item` in `input.css`: eine durchgehende Pille,
+nur die aktive Option ist HA-blau hinterlegt, keine Trennlinien; mobil über die volle Breite). Der 3-Zustands-
+Umbuchungsfilter (Alle Buchungen/Nur Umbuchungen/Ohne Umbuchungen) ist ein Trichter-Icon-Button mit Dropdown-Panel
+(dieselbe `data-dropdown-toggle`-Komponente wie das "Ansicht"-Menü der Buchungsliste; Radios in einem GET-Formular
+mit versteckten `granularity`/`ref`/`account_id`) und zeigt einen farbigen Punkt, wenn er von "Alle" abweicht. Er wirkt
+auf alle Kennzahlen unten. **Standard: "Ohne Umbuchungen"** (`DEFAULT_TRANSFERS` in `dashboard.py`), wenn die URL keinen
+`transfers`-Parameter hat (erstes Laden, Menü "Übersicht"). Der Filterzustand lebt ausschließlich in der URL (kein localStorage/
+Cookie): eine ausdrückliche Wahl - auch `transfers=all` - steht immer explizit in der URL, wird von allen Vor/Zurück-/Zeitraum-/
+Konto-Links mitgeführt (`_dashboard_url` lässt nur den Standardwert weg) und nie durch den Standard überschrieben; ungültige Werte
+fallen auf den Standard. Der Punkt am Filter-Icon erscheint bei jedem Wert außer "Alle" - also im Standardzustand (Hinweis: es wird
+gefiltert). Die Buchungsliste behält ihren eigenen Standard "Alle". Mobil sitzt das Filter-Icon neben dem Titel, das Segmented-Control darunter.
+
+**Budgets (Zeiträume "Monat" und "Jahr"):** Karte "Budgets" unter dem Kategorie-Diagramm (`_budget_items()` im
+Router). Pro Kategorie mit Budget (`/budgets`, Modell `CategoryBudget`, ein Betrag je Ober- ODER Unterkategorie) ein
+Fortschrittsbalken: Ist-Ausgaben des Zeitraums gegen das Budget - bei "Jahr" gegen den hochgerechneten Betrag
+(Monatsbudget × 12, angezeigt als "12 × …"). Die ganze Zeile (Name, Betrag, Balken) ist ein Button und öffnet dasselbe
+Drilldown-Modal wie das Kategorie-Diagramm, mit dem Zeitraum der Ansicht (Oberkategorie inkl. Unterkategorien,
+Unterkategorie nur eigene). Gezählt wird wie im Kategorie-Diagramm (Oberkategorie =
+inkl. aller Unterkategorien, Unterkategorie = nur eigene Buchungen; Bargeld-Splits berücksichtigt), also zählt eine
+Unterkategorie zugleich in ihr Budget und in das der Oberkategorie. Immer alle Konten, **ohne** Umbuchungen (der
+Konto-Filter gilt nur für das Diagramm); Erstattungen mindern die Ausgaben (nie negativ). Farben: < 80 % grün,
+80-100 % gelb (genau 100 % noch gelb), > 100 % rot; die Prozentzahl wird passend zur Farbe ab-/aufgerundet (79,99 %
+zeigt "79 %", 100,01 % zeigt "101 %"), gerechnet wird in ganzen Cent. Sortierung: höchste Auslastung zuerst; Klick auf
+die Zeile öffnet den Drilldown. Bei Tag/Woche wird der Bereich ausgeblendet (keine sinnvolle Umrechnung, nicht berechnet).
 
 **Kennzahlen-Kacheln:** eine hervorgehobene Gesamt-Kachel (alle Konten) plus
 eine Kachel pro Konto, jeweils Einnahmen/Ausgaben/Netto für den gewählten
@@ -777,6 +889,17 @@ normalisiert.
 
 ## Styling: Tailwind CSS (Standalone-CLI, ohne Node.js)
 
+**Farbpalette (an Home Assistant angelehnt):** In `input.css` (`@theme`) ist die Tailwind-Skala `gray` durch eine
+neutrale ersetzt, deren Werte aus dem HA-Frontend stammen (Theme-Definition im Frontend-Bundle des Dev-HA gelesen, nicht
+geraten): Darkmode Seitenhintergrund `#111111` (= `gray-950`), Karten/Seitenleiste `#1c1c1c` (`gray-900`), Rahmen/Hover
+`#333333` (`gray-800`, ≈ HA-Trennlinie `rgba(225,225,225,.12)` auf Karten), Sekundärtext `gray-400` (≈ `#9b9b9b`), Grundtext
+`gray-200` (≈ `#e1e1e1`); hell `gray-50` `#fafafa`, Karten weiß, Rahmen `gray-200` `#e5e5e5`. Die App läuft im Ingress-iframe und
+erbt HAs CSS-Variablen nicht - die Farben sind deshalb fest hinterlegt (kein Auslesen des Eltern-Frames). Alle bestehenden
+`gray-*`/`dark:`-Klassen profitieren automatisch; Akzent bleibt `#03a9f4`. Chart.js-Farben (Achsen/Raster) stehen in
+`index.html`. **Falle:** das per CDN geladene `tom-select.css` ist nicht in einem `@layer` und schlägt deshalb geschichtete
+Tailwind-Regeln - dessen Dark-Overrides in `input.css` daher mit `dark:!…`. Regressionstest: `test_r14.py` (scannt alle Seiten im
+Darkmode auf blaustichige Grautöne).
+
 Kein npm/Node.js-Laufzeitabhängigkeit: Das `Dockerfile` lädt in einer
 Build-Stage (`css-builder`) die passende
 [Tailwind-Standalone-CLI](https://tailwindcss.com/blog/standalone-cli)
@@ -823,7 +946,12 @@ Klasse - eine gemeinsame Stelle statt die Breite pro Dialog einzeln zu setzen.
 Dashboard-Drilldown nutzt die dritte Stufe `.modal-full` (`mx-auto w-[95vw]
 max-w-[1600px]`), die mindestens so breit wie der Hauptinhaltsbereich ist
 (Dialog 1368px bei 1440px Viewport, Inhalt 1120px). `.modal-wide`/`.modal-full`
-sind die einzigen Stellen, die Dialogbreiten setzen. Die eigentliche
+sind die einzigen Stellen, die Dialogbreiten setzen. Formular-Dialoge mit aufklappbarer Tom-Select-Liste (Regel-Dialog)
+bekommen zusätzlich `.modal-dropdown` (keine Breite): ein natives `<dialog>` ist `overflow: auto` und schneidet die absolut
+positionierte Liste ab bzw. zeigt eine Scrollleiste - auf Fenstern ab 42rem Höhe deshalb `overflow: visible` + Mindesthöhe 30rem,
+auf niedrigeren Fenstern bleibt es beim Scrollen im Dialog (`test_r14.py` prüft Erreichbarkeit der letzten Option, gemessen mit
+`elementFromPoint`, und dass ohne die Klasse tatsächlich abgeschnitten würde). Der Regel-Dialog trug schon immer `.modal-wide`
+(gleiche Breite wie Konto-/Kategorie-Dialog); der Eindruck "kleiner" kam von der abgeschnittenen Liste. Die eigentliche
 CSV-Import-Seite (`GET /import`, kein `<dialog>` sondern eine
 gewöhnliche Seite) nutzte lange Zeit fälschlich `.page-narrow` statt
 `.modal-wide`, obwohl sie optisch wie die anderen großen Fenster wirken

@@ -19,6 +19,7 @@ from app.models import (
     TransactionType,
     UMBUCHUNG_KEY,
 )
+from app.services.category_tree import category_groups
 from app.system_categories import get_or_create_system_category, get_system_category
 from app.templating import templates
 
@@ -33,22 +34,7 @@ SIMILAR_TEXT_THRESHOLD = 0.6
 
 def _category_groups(session: Session) -> list[dict]:
     """Kategorien gruppiert für die Dropdown-Darstellung (Optgroups je Oberkategorie)."""
-    top_level = session.exec(
-        select(Category).where(Category.parent_id.is_(None)).order_by(Category.name)
-    ).all()
-    groups = []
-    for cat in top_level:
-        children = session.exec(
-            select(Category).where(Category.parent_id == cat.id).order_by(Category.name)
-        ).all()
-        groups.append(
-            {
-                "id": cat.id,
-                "name": cat.name,
-                "children": [{"id": c.id, "name": c.name} for c in children],
-            }
-        )
-    return groups
+    return category_groups(session)
 
 
 def _suggested_category_id(session: Session, txn: Transaction) -> Optional[int]:
@@ -275,7 +261,16 @@ def _build_row(
     bargeld_category_id: Optional[int] = None,
     splits_by_txn_id: Optional[dict] = None,
 ) -> dict:
-    suggested_id = _suggested_category_id(session, txn) if txn.category_id is None else None
+    # Vorschlag nur fuer unkategorisierte Buchungen: ein hinterlegter Regel-Vorschlag (Modus "nur vorschlagen")
+    # hat Vorrang vor dem Vorschlag anhand wiederkehrender Buchungen.
+    suggestion_from_rule = False
+    suggested_id = None
+    if txn.category_id is None:
+        if txn.suggested_category_id and txn.suggested_category_id in categories_by_id:
+            suggested_id = txn.suggested_category_id
+            suggestion_from_rule = True
+        else:
+            suggested_id = _suggested_category_id(session, txn)
 
     counter_txn = None
     counter_account = None
@@ -295,6 +290,7 @@ def _build_row(
         "txn": txn,
         "account": accounts_by_id.get(txn.account_id),
         "suggested_category": categories_by_id.get(suggested_id) if suggested_id else None,
+        "suggestion_from_rule": suggestion_from_rule,
         "counter_txn": counter_txn,
         "counter_account": counter_account,
         "transfer_candidates": transfer_candidates,
@@ -586,6 +582,8 @@ def set_transaction_category(
     txn = session.get(Transaction, transaction_id)
     if txn.counter_transaction_id is None:
         txn.category_id = int(category_id) if category_id else None
+        if txn.category_id is not None:
+            txn.suggested_category_id = None  # Vorschlag erledigt (uebernommen oder anders entschieden)
         session.add(txn)
         session.commit()
         session.refresh(txn)
@@ -608,6 +606,8 @@ def bulk_set_category(
         if txn is None or txn.counter_transaction_id is not None:
             continue
         txn.category_id = category_id
+        if category_id is not None:
+            txn.suggested_category_id = None
         session.add(txn)
         txns.append(txn)
     session.commit()

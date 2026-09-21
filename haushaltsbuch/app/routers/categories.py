@@ -6,7 +6,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlmodel import Session, select
 
 from app.database import engine, get_session
-from app.models import SYSTEM_CATEGORY_DEFAULT_NAMES, Category, Transaction
+from app.models import (
+    SYSTEM_CATEGORY_DEFAULT_NAMES,
+    CategorizationRule,
+    Category,
+    CategoryBudget,
+    Transaction,
+)
 from app.system_categories import get_or_create_system_category
 from app.templating import templates
 
@@ -181,6 +187,15 @@ def delete_category_confirm(
     transaction_count = len(
         session.exec(select(Transaction).where(Transaction.category_id == category_id)).all()
     )
+    rule_count = len(
+        session.exec(
+            select(CategorizationRule).where(CategorizationRule.category_id == category_id)
+        ).all()
+    )
+    has_budget = (
+        session.exec(select(CategoryBudget).where(CategoryBudget.category_id == category_id)).first()
+        is not None
+    )
     return templates.TemplateResponse(
         request=request,
         name="categories/_delete_confirm.html",
@@ -188,6 +203,8 @@ def delete_category_confirm(
             "category": category,
             "children": children,
             "transaction_count": transaction_count,
+            "rule_count": rule_count,
+            "has_budget": has_budget,
         },
     )
 
@@ -217,6 +234,23 @@ def delete_category(
     ).all()
     for txn in affected_txns:
         txn.category_id = None
+        session.add(txn)
+
+    # Regeln mit dieser Ziel-Kategorie und ein Budget fuer sie ergeben ohne die Kategorie keinen Sinn.
+    for rule in session.exec(
+        select(CategorizationRule).where(CategorizationRule.category_id == category_id)
+    ).all():
+        session.delete(rule)
+    for budget in session.exec(
+        select(CategoryBudget).where(CategoryBudget.category_id == category_id)
+    ).all():
+        session.delete(budget)
+
+    # Regel-Vorschlaege auf diese Kategorie entfallen
+    for txn in session.exec(
+        select(Transaction).where(Transaction.suggested_category_id == category_id)
+    ).all():
+        txn.suggested_category_id = None
         session.add(txn)
 
     session.delete(category)

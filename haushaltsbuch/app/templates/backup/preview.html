@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import arrow_up_tray %}
+{% from "backup/_danger.html" import danger_panel %}
 
 {% block content %}
 <div class="card">
@@ -52,7 +53,7 @@
         <label class="flex items-center gap-2 text-sm {{ 'cursor-pointer text-gray-700 dark:text-gray-200' if ok else 'cursor-not-allowed text-gray-400 dark:text-gray-500' }}">
           <input
             type="checkbox" name="groups" value="{{ g }}" data-group="{{ g }}"
-            {% if g == 'transactions' %}data-requires="accounts,categories"{% endif %}
+            {% if requires.get(g) %}data-requires="{{ requires[g]|join(',') }}"{% endif %}
             {% if ok %}checked{% else %}disabled data-locked="1"{% endif %}
             class="rounded border-gray-300 text-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-900"
           />
@@ -67,7 +68,7 @@
         <p class="ml-6 text-xs text-gray-500 dark:text-gray-400">{{ why }}</p>
         {% endif %}
         <p class="ml-6 hidden text-xs text-gray-500 dark:text-gray-400" data-hint-for="{{ g }}">
-          automatisch enthalten, da für Buchungen benötigt
+          automatisch enthalten, da von einer gewählten Gruppe benötigt
         </p>
       </div>
       {% endfor %}
@@ -77,6 +78,8 @@
   <div class="card">
     <h3 class="text-base font-semibold">2. Import-Modus</h3>
     <div class="mt-4 space-y-4">
+      {# Es ist immer genau EIN Modus waehlbar (und vorausgewaehlt): leere Zieldatenbank -> "In leere Datenbank
+         importieren"; sonst -> "Bestehende Daten ersetzen" (dort gibt es etwas zu ersetzen). #}
       <div>
         <label class="flex items-start gap-2 text-sm {{ 'cursor-pointer' if target_empty else 'cursor-not-allowed text-gray-400 dark:text-gray-500' }}">
           <input type="radio" name="mode" value="empty" data-mode="empty" {% if target_empty %}checked{% else %}disabled{% endif %}
@@ -97,31 +100,24 @@
       </div>
 
       <div>
-        <label class="flex cursor-pointer items-start gap-2 text-sm">
-          <input type="radio" name="mode" value="replace" data-mode="replace"
+        <label class="flex items-start gap-2 text-sm {{ 'cursor-not-allowed text-gray-400 dark:text-gray-500' if target_empty else 'cursor-pointer' }}">
+          <input type="radio" name="mode" value="replace" data-mode="replace" {% if target_empty %}disabled{% else %}checked{% endif %}
                  class="mt-0.5 border-gray-300 text-accent focus:ring-accent dark:border-gray-700" />
           <span>
-            <span class="font-medium text-red-700 dark:text-red-400">Bestehende Daten vollständig ersetzen</span>
+            <span class="font-medium {{ '' if target_empty else 'text-red-700 dark:text-red-400' }}">Bestehende Daten vollständig ersetzen</span>
             <span class="block text-xs text-gray-500 dark:text-gray-400">
               Löscht die bestehenden Daten der gewählten Gruppen und ersetzt sie durch den Inhalt der Datei.
               Die Systemkategorien „Umbuchung“ und „Bargeld“ bleiben bestehen.
             </span>
+            {% if target_empty %}
+            <span class="mt-1 block text-xs text-amber-700 dark:text-amber-400">
+              Nicht verfügbar: die Zieldatenbank ist leer – es gibt nichts zu ersetzen.
+            </span>
+            {% endif %}
           </span>
         </label>
 
-        <div id="replace-panel" class="mt-3 hidden rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
-          <p class="font-semibold">Achtung: destruktive Aktion!</p>
-          <p class="mt-1" id="replace-loss">…</p>
-          <p class="mt-2 text-xs">
-            Vor dem Löschen wird automatisch ein Sicherheits-Backup des aktuellen Bestands erzeugt und
-            nach dem Import zum Download angeboten.
-          </p>
-          <label class="mt-3 block text-xs font-medium" for="confirm-text">
-            Zum Bestätigen das Wort <span class="font-mono font-bold">{{ confirm_word }}</span> eingeben:
-          </label>
-          <input type="text" id="confirm-text" name="confirm_text" autocomplete="off"
-                 class="form-input mt-1 max-w-xs !py-1.5" placeholder="{{ confirm_word }}" />
-        </div>
+        {% call danger_panel(confirm_word, "replace-loss", panel_id="replace-panel", hidden=true, after="dem Import") %}…{% endcall %}
       </div>
     </div>
     <script type="application/json" id="target-counts">{{ target_counts|tojson }}</script>
@@ -155,10 +151,13 @@
 
     // Spiegel von replace_plan() im Backend: Konten/Kategorien/Buchungen ersetzen => alle Buchungen weg
     function plan(sel) {
-      var p = { accounts: 0, categories: 0, mapping_profiles: 0, transactions: 0, transaction_splits: 0, rejected_transfer_pairs: 0 };
+      var p = { accounts: 0, categories: 0, mapping_profiles: 0, categorization_rules: 0, budgets: 0, transactions: 0, transaction_splits: 0, rejected_transfer_pairs: 0 };
       if (sel.indexOf("accounts") >= 0) p.accounts = counts.accounts;
       if (sel.indexOf("categories") >= 0) p.categories = counts.categories;
       if (sel.indexOf("mapping_profiles") >= 0) p.mapping_profiles = counts.mapping_profiles;
+      // Regeln/Budgets zeigen auf Kategorien: werden Kategorien ersetzt, muessen sie mit weg
+      if (sel.indexOf("categorization_rules") >= 0 || sel.indexOf("categories") >= 0) p.categorization_rules = counts.categorization_rules;
+      if (sel.indexOf("budgets") >= 0 || sel.indexOf("categories") >= 0) p.budgets = counts.budgets;
       if (sel.some(function (g) { return g === "accounts" || g === "categories" || g === "transactions"; })) {
         p.transactions = counts.transactions; p.transaction_splits = counts.transaction_splits; p.rejected_transfer_pairs = counts.rejected_transfer_pairs;
       }
@@ -173,6 +172,8 @@
         if (p.accounts) parts.push(p.accounts + " Konto/Konten");
         if (p.categories) parts.push(p.categories + " Kategorie(n) (ohne Systemkategorien)");
         if (p.mapping_profiles) parts.push(p.mapping_profiles + " Mapping-Profil(e)");
+        if (p.categorization_rules) parts.push(p.categorization_rules + " Kategorisierungsregel(n)");
+        if (p.budgets) parts.push(p.budgets + " Budget(s)");
         if (p.transactions) parts.push(p.transactions + " Buchung(en) inkl. " + p.transaction_splits + " Split(s)");
         loss.textContent = parts.length
           ? "Dabei gehen unwiderruflich verloren (bestehende Daten): " + parts.join(", ") + "."
@@ -182,8 +183,14 @@
             loss.textContent += " Hinweis: Da Konten/Kategorien ersetzt werden, müssen auch alle bestehenden Buchungen gelöscht werden - die Buchungen aus der Datei werden mangels Auswahl NICHT importiert.";
           }
         }
+        if (sel.indexOf("categories") >= 0) {
+          var lost = [];
+          if (counts.categorization_rules && sel.indexOf("categorization_rules") < 0) lost.push("Kategorisierungsregeln");
+          if (counts.budgets && sel.indexOf("budgets") < 0) lost.push("Budgets");
+          if (lost.length) loss.textContent += " Hinweis: Da Kategorien ersetzt werden, gehen auch die bestehenden " + lost.join(" und ") + " verloren (mangels Auswahl werden die aus der Datei NICHT importiert).";
+        }
       }
-      var ok = sel.length > 0 && m !== "" && (m !== "replace" || document.getElementById("confirm-text").value.trim().toUpperCase() === word);
+      var ok = sel.length > 0 && m !== "" && (m !== "replace" || hafinConfirmWordOk(document.getElementById("confirm-text"), word));
       submit.disabled = !ok;
     }
     form.addEventListener("change", refresh);

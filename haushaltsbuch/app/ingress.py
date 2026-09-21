@@ -34,7 +34,7 @@ _ATTR_RE = re.compile(
 #    auf die bekannten Top-Level-Routen dieser App beschraenkt, damit normale Texte mit
 #    Anfuehrungszeichen und Schraegstrich nicht versehentlich umgeschrieben werden.
 _JS_RE = re.compile(
-    r"""(["'`])/((?:transactions|categories|accounts|import|mapping-profiles|dashboard|backup|settings|static|health)"""
+    r"""(["'`])/((?:transactions|categories|accounts|import|mapping-profiles|categorization-rules|budgets|dashboard|backup|settings|static|health)"""
     r"""(?=[/?#"'`\s]|$))"""
 )
 

@@ -54,6 +54,8 @@
       hx-target="#transaction-row-{{ row.txn.id }}"
       hx-swap="outerHTML"
       hx-vals='{"category_id": "{{ row.suggested_category.id }}"}'
+      {% if row.suggestion_from_rule %}title="Von einer Kategorisierungsregel vorgeschlagen"{% endif %}
+      {% if row.suggestion_from_rule %}data-suggestion-source="rule"{% endif %}
     >
       Vorschlag: {{ row.suggested_category.name }} übernehmen
     </button>

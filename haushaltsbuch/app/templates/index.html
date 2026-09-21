@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% from "_icons.html" import chevron_left, chevron_right %}
+{% from "_icons.html" import chevron_left, chevron_right, funnel %}
+{% from "_segmented.html" import segmented_links, segmented_buttons %}
 
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -7,32 +8,63 @@
 
 {% block content %}
 <div class="card">
-  <div class="flex flex-wrap items-center justify-between gap-4">
-    <div>
+  {# Mobil: Titel + Filter-Icon in einer Zeile, darunter das Segmented-Control ueber die volle Breite;
+     ab "sm": eine Zeile mit Titel links und Zeitraum-Auswahl + Filter rechts #}
+  <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-4 sm:flex sm:flex-wrap sm:items-center">
+    <div class="sm:mr-auto">
       <h2 class="text-base font-semibold">Übersicht</h2>
       <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
         Kennzahlen und Kategorien für den gewählten Zeitraum.
       </p>
     </div>
-    <div class="flex flex-wrap items-center gap-3">
-      <div class="inline-flex overflow-hidden rounded-lg border border-gray-300 dark:border-gray-700">
-        {% for g, label in [("day", "Tag"), ("week", "Woche"), ("month", "Monat"), ("year", "Jahr")] %}
-        <a href="{{ url_granularity[g] }}" class="px-3 py-2 text-sm font-medium transition-colors {{ 'border-l border-gray-300 dark:border-gray-700' if not loop.first else '' }} {{ 'bg-accent text-white' if granularity == g else 'bg-transparent text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800' }}">
+    <div class="col-span-2 row-start-2 sm:col-auto sm:row-auto">
+      {{ segmented_links([
+           ("day", "Tag", url_granularity["day"]),
+           ("week", "Woche", url_granularity["week"]),
+           ("month", "Monat", url_granularity["month"]),
+           ("year", "Jahr", url_granularity["year"]),
+         ], granularity, "Zeitraum", stretch=true) }}
+    </div>
+    {% set transfer_labels = {"all": "Alle Buchungen", "only": "Nur Umbuchungen", "hide": "Ohne Umbuchungen"} %}
+    <div class="relative col-start-2 row-start-1 sm:col-auto sm:row-auto">
+      <button
+        type="button"
+        class="btn-ghost-icon relative"
+        data-dropdown-toggle="#transfer-filter-panel"
+        aria-haspopup="true"
+        aria-expanded="false"
+        aria-label="Umbuchungen filtern{% if transfers != 'all' %} (aktiv: {{ transfer_labels[transfers] }}){% endif %}"
+        title="{{ 'Umbuchungen: ' ~ transfer_labels[transfers] if transfers != 'all' else 'Umbuchungen filtern' }}"
+      >
+        {{ funnel("h-5 w-5") }}
+        {% if transfers != "all" %}
+        <span class="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-white dark:ring-gray-900" data-filter-indicator></span>
+        {% endif %}
+      </button>
+      <form
+        id="transfer-filter-panel"
+        method="get"
+        action="/"
+        class="hafin-dropdown-panel absolute right-0 z-20 mt-2 hidden w-60 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-800 dark:bg-gray-900"
+      >
+        <input type="hidden" name="granularity" value="{{ granularity }}" />
+        <input type="hidden" name="ref" value="{{ ref }}" />
+        {% if selected_account_id %}<input type="hidden" name="account_id" value="{{ selected_account_id }}" />{% endif %}
+        <p class="px-2 pb-1 pt-1 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Umbuchungen</p>
+        {% for key, label in transfer_labels.items() %}
+        <label class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
+          <input
+            type="radio"
+            name="transfers"
+            value="{{ key }}"
+            {% if transfers == key %}checked{% endif %}
+            onchange="this.form.submit()"
+            class="border-gray-300 text-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-900"
+          />
           {{ label }}
-        </a>
+        </label>
         {% endfor %}
-      </div>
-      <div class="inline-flex overflow-hidden rounded-lg border border-gray-300 dark:border-gray-700">
-        <a href="{{ url_transfers_all }}" class="px-3 py-2 text-sm font-medium transition-colors {{ 'bg-accent text-white' if transfers == 'all' else 'bg-transparent text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800' }}">
-          Alle
-        </a>
-        <a href="{{ url_transfers_only }}" class="border-l border-gray-300 px-3 py-2 text-sm font-medium transition-colors dark:border-gray-700 {{ 'bg-accent text-white' if transfers == 'only' else 'bg-transparent text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800' }}">
-          Nur Umbuchungen
-        </a>
-        <a href="{{ url_transfers_hide }}" class="border-l border-gray-300 px-3 py-2 text-sm font-medium transition-colors dark:border-gray-700 {{ 'bg-accent text-white' if transfers == 'hide' else 'bg-transparent text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800' }}">
-          Ohne Umbuchungen
-        </a>
-      </div>
+      </form>
     </div>
   </div>
 
@@ -50,7 +82,7 @@
 </div>
 
 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-  <div class="card border-accent/30 bg-accent/5 dark:bg-accent/10">
+  <div class="card border-accent/30 bg-accent/5 dark:bg-accent/[0.06]">
     <p class="text-xs font-medium uppercase tracking-wide text-accent">Gesamt (alle Konten)</p>
     <dl class="mt-3 space-y-1.5 text-sm">
       <div class="flex justify-between">
@@ -102,14 +134,10 @@
     <h2 class="text-base font-semibold">Kategorien im Zeitraum</h2>
     <div class="flex flex-wrap items-center gap-3">
       {% if chart_data.labels %}
-      <div class="inline-flex overflow-hidden rounded-lg border border-gray-300 dark:border-gray-700">
-        <button type="button" id="chart-mode-simple" class="chart-mode-btn px-3 py-2 text-sm font-medium transition-colors bg-accent text-white" data-mode="simple">
-          Einfach
-        </button>
-        <button type="button" id="chart-mode-stacked" class="chart-mode-btn border-l border-gray-300 px-3 py-2 text-sm font-medium transition-colors bg-transparent text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800" data-mode="stacked">
-          Gestapelt nach Unterkategorie
-        </button>
-      </div>
+      {{ segmented_buttons([
+           ("simple", "Einfach", "simple"),
+           ("stacked", "Gestapelt nach Unterkategorie", "stacked"),
+         ], "simple", "chart-mode-btn", "Diagramm-Darstellung") }}
       {% endif %}
       <form method="get" action="/" class="flex items-center gap-2">
         <input type="hidden" name="granularity" value="{{ granularity }}" />
@@ -144,13 +172,13 @@
         "#f97316", "#14b8a6", "#a855f7", "#84cc16", "#eab308"
       ];
       var isDark = document.documentElement.classList.contains("dark");
-      var textColor = isDark ? "#d1d5db" : "#374151";
-      var gridColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+      var textColor = isDark ? "#9b9b9b" : "#525252";  // HA: secondary-text-color (dunkel)
+      var gridColor = isDark ? "rgba(225,225,225,0.12)" : "rgba(0,0,0,0.06)";  // HA: divider-color
       var currentMode = "simple";
 
       function simpleColors() {
         return chartData.simple_amounts.map(function (_, i) {
-          return chartData.simple_uncategorized[i] ? "#9ca3af" : palette[i % palette.length];
+          return chartData.simple_uncategorized[i] ? "#a3a3a3" : palette[i % palette.length];
         });
       }
 
@@ -230,13 +258,8 @@
 
           document.querySelectorAll(".chart-mode-btn").forEach(function (b) {
             var active = b === btn;
-            b.classList.toggle("bg-accent", active);
-            b.classList.toggle("text-white", active);
-            b.classList.toggle("bg-transparent", !active);
-            b.classList.toggle("text-gray-700", !active);
-            b.classList.toggle("dark:text-gray-200", !active);
-            b.classList.toggle("hover:bg-gray-100", !active);
-            b.classList.toggle("dark:hover:bg-gray-800", !active);
+            b.classList.toggle("is-active", active);
+            b.setAttribute("aria-pressed", active ? "true" : "false");
           });
 
           chart.data.datasets = buildDatasets(mode);
@@ -253,6 +276,57 @@
   </p>
   {% endif %}
 </div>
+
+{% if granularity in ("month", "year") %}
+<div class="card" id="budgets-card">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-base font-semibold">Budgets</h2>
+    <a href="/budgets" class="text-sm text-accent hover:underline">Budgets verwalten</a>
+  </div>
+  {% if budget_items %}
+  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+    {% if granularity == "year" %}
+    Ausgaben in {{ period_label }} gegen das Jahresbudget (Monatsbudget × 12; alle Konten, ohne Umbuchungen).
+    {% else %}
+    Ausgaben in {{ period_label }} gegen das Monatsbudget (alle Konten, ohne Umbuchungen).
+    {% endif %}
+    Ein Klick auf einen Eintrag zeigt die zugehörigen Buchungen.
+  </p>
+  <ul class="mt-3 space-y-1">
+    {% for b in budget_items %}
+    <li data-budget-status="{{ b.status }}">
+      <button type="button"
+              class="budget-item -mx-2 block w-full cursor-pointer rounded-lg px-2 py-2 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent dark:hover:bg-gray-800/60"
+              aria-label="Buchungen zu {{ b.label }} anzeigen"
+              onclick="hafinOpenDialog('{{ b.url }}', 'dashboard-drilldown-dialog', 'dashboard-drilldown-content')">
+        <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
+          <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ b.label }}</span>
+          <span class="font-mono text-xs text-gray-600 dark:text-gray-300">
+            {{ b.spent|format_currency }} von {{ b.budget|format_currency }}
+            <span class="ml-1 font-semibold {% if b.status == 'over' %}text-red-600 dark:text-red-400{% elif b.status == 'warn' %}text-amber-600 dark:text-amber-400{% else %}text-green-600 dark:text-green-400{% endif %}">{{ b.percent_label }} %</span>
+          </span>
+        </span>
+        <span class="mt-1.5 block h-2.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800" role="progressbar"
+              aria-label="{{ b.label }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ b.percent_label }}">
+          <span class="block h-full rounded-full {% if b.status == 'over' %}bg-red-500{% elif b.status == 'warn' %}bg-amber-500{% else %}bg-green-500{% endif %}"
+                style="width: {{ '%.1f'|format(b.bar_width) }}%"></span>
+        </span>
+        <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+          {% if b.remaining >= 0 %}Noch {{ b.remaining|format_currency }} übrig{% else %}Überzogen um {{ (-b.remaining)|format_currency }}{% endif %}
+          {% if granularity == "year" %}<span class="text-gray-400 dark:text-gray-500"> · 12 × {{ b.monthly|format_currency }}</span>{% endif %}
+        </span>
+      </button>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+    Noch keine Budgets festgelegt. Unter <a href="/budgets" class="text-accent underline">Einstellungen → Budgets</a>
+    lässt sich pro Kategorie ein Monatsbetrag hinterlegen.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
 
 <dialog id="dashboard-drilldown-dialog" class="card modal-full backdrop:bg-gray-900/50">
   <div id="dashboard-drilldown-content"></div>

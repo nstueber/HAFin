@@ -1,0 +1,19 @@
+{# Gemeinsame Bestaetigungs-Box fuer destruktive Aktionen (Import-Modus "ersetzen" und "Alle Daten loeschen"):
+   Warnung, Verlust-Zusammenfassung, Hinweis auf das Sicherheits-Backup und Eingabefeld fuer das Bestaetigungswort.
+   Der Inhalt des Aufrufers (caller) ist die Verlust-Zusammenfassung (Element #<loss_id>).
+   Das Aktivieren des Buttons uebernimmt der Aufrufer per hafinConfirmWordOk() (enhancements.js). #}
+{% macro danger_panel(word, loss_id, panel_id="", input_id="confirm-text", hidden=false, after="dem Vorgang") %}
+<div {% if panel_id %}id="{{ panel_id }}"{% endif %} class="{{ 'hidden ' if hidden else '' }}mt-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
+  <p class="font-semibold">Achtung: destruktive Aktion!</p>
+  <p class="mt-1" id="{{ loss_id }}">{{ caller() }}</p>
+  <p class="mt-2 text-xs">
+    Vor dem Löschen wird automatisch ein Sicherheits-Backup des aktuellen Bestands erzeugt und
+    nach {{ after }} zum Download angeboten.
+  </p>
+  <label class="mt-3 block text-xs font-medium" for="{{ input_id }}">
+    Zum Bestätigen das Wort <span class="font-mono font-bold">{{ word }}</span> eingeben:
+  </label>
+  <input type="text" id="{{ input_id }}" name="confirm_text" autocomplete="off"
+         class="form-input mt-1 max-w-xs !py-1.5" placeholder="{{ word }}" />
+</div>
+{% endmacro %}

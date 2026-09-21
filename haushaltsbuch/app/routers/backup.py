@@ -5,7 +5,8 @@ Endpunkte (bewusst eigenstaendig und skriptbar, nicht nur UI-Logik):
 - ``POST /backup/import``  (multipart: ``file`` ODER ``upload_id``; ``mode``; ``groups``; ``confirm_text``)
   -> Ergebnis-Report (HTML, bei ``Accept: application/json`` als JSON)
 - ``POST /backup/import/preview`` (UI: Datei pruefen, Vorschau, Modus waehlen)
-- ``GET  /backup/safety/{name}`` -> automatisch erzeugtes Sicherheits-Backup (Modus "ersetzen")
+- ``POST /backup/reset`` (Form: ``confirm_text``) -> alle Daten loeschen (mit Sicherheits-Backup davor)
+- ``GET  /backup/safety/{name}`` -> automatisch erzeugtes Sicherheits-Backup (Modus "ersetzen"/Reset)
 """
 
 import json
@@ -56,7 +57,9 @@ def _page_context(session: Session, **extra) -> dict:
         "groups": svc.GROUPS,
         "group_labels": svc.GROUP_LABELS,
         "section_labels": svc.SECTION_LABELS,
+        "requires": svc.REQUIRES,
         "current_counts": svc.target_counts(session),
+        "confirm_word": svc.CONFIRM_WORD,
         **extra,
     }
 
@@ -260,5 +263,46 @@ async def run_import(
             report=report,
             error=None,
             safety_backup=safety_name,
+        ),
+    )
+
+
+@router.post("/reset")
+def reset_all_data(
+    request: Request,
+    confirm_text: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    """Alle Daten loeschen: gleiche Absicherung wie der Import-Modus "ersetzen" - Bestaetigungswort,
+    danach Sicherheits-Backup des kompletten Bestands, erst dann wird geloescht (eine Transaktion)."""
+    wants_json = _wants_json(request)
+    safety_name = None
+
+    def fail(message: str, status_code: int = 400):
+        if wants_json:
+            return JSONResponse({"error": message, "safety_backup": safety_name}, status_code=status_code)
+        return templates.TemplateResponse(
+            request=request,
+            name="backup/result.html",
+            context=_page_context(session, error=message, safety_backup=safety_name, report=None, reset=True),
+            status_code=status_code,
+        )
+
+    if confirm_text.strip().upper() != svc.CONFIRM_WORD:
+        return fail(
+            f"Bestätigung fehlt: zum Löschen aller Daten muss das Wort „{svc.CONFIRM_WORD}“ eingegeben werden."
+        )
+    try:
+        safety_name = _write_safety_backup(session)
+        deleted = svc.reset_all(session)
+    except svc.BackupError as exc:
+        return fail(str(exc))
+    if wants_json:
+        return JSONResponse({"deleted": deleted, "safety_backup": safety_name})
+    return templates.TemplateResponse(
+        request=request,
+        name="backup/result.html",
+        context=_page_context(
+            session, reset=True, reset_deleted=deleted, error=None, report=None, safety_backup=safety_name
         ),
     )

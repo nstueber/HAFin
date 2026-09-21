@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% from "_icons.html" import arrow_down_tray, arrow_up_tray %}
+{% from "_icons.html" import arrow_down_tray, arrow_up_tray, trash %}
+{% from "backup/_danger.html" import danger_panel %}
 
 {% block content %}
 <div class="card">
@@ -22,7 +23,7 @@
         <label class="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
           <input
             type="checkbox" name="groups" value="{{ g }}" checked data-group="{{ g }}"
-            {% if g == 'transactions' %}data-requires="accounts,categories"{% endif %}
+            {% if requires.get(g) %}data-requires="{{ requires[g]|join(',') }}"{% endif %}
             class="rounded border-gray-300 text-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-900"
           />
           <span class="font-medium">{{ group_labels[g] }}</span>
@@ -32,7 +33,7 @@
           </span>
         </label>
         <p class="ml-6 hidden text-xs text-gray-500 dark:text-gray-400" data-hint-for="{{ g }}">
-          automatisch enthalten, da für Buchungen benötigt
+          automatisch enthalten, da von einer gewählten Gruppe benötigt
         </p>
       </div>
       {% endfor %}
@@ -66,6 +67,39 @@
   </form>
 </div>
 
+{% set reset_total = current_counts.accounts + current_counts.categories + current_counts.mapping_profiles + current_counts.categorization_rules + current_counts.budgets + current_counts.transactions %}
+<div class="card !border-red-200 dark:!border-red-900/50" id="reset-card">
+  <h2 class="flex items-center gap-2 text-base font-semibold text-red-700 dark:text-red-400">
+    {{ trash("h-5 w-5") }} Alle Daten löschen
+  </h2>
+  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    Setzt die Datenbank vollständig zurück: alle Konten, Kategorien (außer den Systemkategorien „Umbuchung“ und
+    „Bargeld“), Mapping-Profile, Kategorisierungsregeln, Budgets, Buchungen und Splits werden gelöscht.
+  </p>
+  <form method="post" action="/backup/reset" id="reset-form" class="mt-2">
+    {% call danger_panel(confirm_word, "reset-loss", panel_id="reset-panel", input_id="reset-confirm-text", after="dem Löschen") %}
+    {% if reset_total %}
+    Dabei gehen unwiderruflich verloren:
+    {{ current_counts.transactions }} Buchung{{ 'en' if current_counts.transactions != 1 else '' }}
+    (inkl. {{ current_counts.transaction_splits }} Split{{ 's' if current_counts.transaction_splits != 1 else '' }}),
+    {{ current_counts.accounts }} Konto/Konten,
+    {{ current_counts.categories }} Kategorie(n) (ohne Systemkategorien),
+    {{ current_counts.mapping_profiles }} Mapping-Profil(e),
+    {{ current_counts.categorization_rules }} Kategorisierungsregel(n) und
+    {{ current_counts.budgets }} Budget(s).
+    {% else %}
+    Es sind keine Daten vorhanden, die gelöscht werden könnten.
+    {% endif %}
+    {% endcall %}
+    <button type="submit" id="reset-submit"
+            class="btn-primary mt-4 !bg-red-600 hover:!bg-red-700 focus-visible:!ring-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+            {% if not reset_total %}data-nothing-to-delete="1"{% endif %} disabled>
+      {{ trash("h-4 w-4") }}
+      <span>Alle Daten löschen</span>
+    </button>
+  </form>
+</div>
+
 <script>
   (function () {
     var scope = document.querySelector("#export-form [data-group-scope]");
@@ -92,6 +126,16 @@
         "<p class='mt-1'><span class='text-green-700 dark:text-green-400'>Enthalten:</span> " + inc.join(", ") + "</p>" +
         "<p class='mt-1'><span class='text-gray-500 dark:text-gray-400'>Nicht enthalten:</span> " + (exc.length ? exc.join(", ").replace(/ \(\d+\)/g, "") : "–") + "</p>";
     });
+
+    // "Alle Daten loeschen": Button erst aktiv, wenn das Bestaetigungswort eingegeben wurde
+    var resetInput = document.getElementById("reset-confirm-text");
+    var resetSubmit = document.getElementById("reset-submit");
+    var resetWord = {{ confirm_word|tojson }};
+    function refreshReset() {
+      resetSubmit.disabled = resetSubmit.hasAttribute("data-nothing-to-delete") || !hafinConfirmWordOk(resetInput, resetWord);
+    }
+    resetInput.addEventListener("input", refreshReset);
+    refreshReset();
   })();
 </script>
 {% endblock %}

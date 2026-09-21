@@ -15,7 +15,16 @@
     werden unkategorisiert.
   </p>
   {% endif %}
-  {% if not children and not transaction_count %}
+  {% if rule_count %}
+  <p>
+    {{ rule_count }} Kategorisierungsregel{{ 'n' if rule_count != 1 else '' }} verweis{{ 'en' if rule_count != 1 else 't' }}
+    auf diese Kategorie und {{ 'werden' if rule_count != 1 else 'wird' }} mitgelöscht.
+  </p>
+  {% endif %}
+  {% if has_budget %}
+  <p>Das für diese Kategorie hinterlegte Budget wird mitgelöscht.</p>
+  {% endif %}
+  {% if not children and not transaction_count and not rule_count and not has_budget %}
   <p>Diese Kategorie wird aktuell nicht verwendet und kann gefahrlos gelöscht werden.</p>
   {% endif %}
 </div>

@@ -3,8 +3,21 @@
 {% block content %}
 <div class="card">
   {% if error %}
-  <h2 class="text-base font-semibold text-red-700 dark:text-red-400">Import nicht durchgeführt</h2>
+  <h2 class="text-base font-semibold text-red-700 dark:text-red-400">{{ "Löschen nicht durchgeführt" if reset else "Import nicht durchgeführt" }}</h2>
   <div class="alert-error mt-4">{{ error }}</div>
+  {% elif reset %}
+  <h2 class="text-base font-semibold text-green-700 dark:text-green-400">Alle Daten gelöscht</h2>
+  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Die Datenbank wurde zurückgesetzt. Die Systemkategorien „Umbuchung“ und „Bargeld“ bestehen weiterhin.</p>
+  <div class="mt-4 rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+    <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Gelöschte Datensätze</p>
+    <table class="mt-1 w-full text-sm">
+      {% for section, n in reset_deleted.items() if n %}
+      <tr><td class="py-0.5 text-gray-600 dark:text-gray-300">{{ section_labels[section] }}</td><td class="py-0.5 text-right font-mono">{{ n }}</td></tr>
+      {% else %}
+      <tr><td class="py-0.5 text-xs text-gray-500" colspan="2">keine</td></tr>
+      {% endfor %}
+    </table>
+  </div>
   {% else %}
   <h2 class="text-base font-semibold text-green-700 dark:text-green-400">Import abgeschlossen</h2>
   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -57,7 +70,7 @@
 
   {% if safety_backup %}
   <div class="mt-4 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-800">
-    <p class="font-medium">Sicherheits-Backup des Bestands vor dem Import</p>
+    <p class="font-medium">Sicherheits-Backup des Bestands vor dem {{ 'Löschen' if reset else 'Import' }}</p>
     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
       Wurde vor dem Löschen automatisch erzeugt (auf dem Server unter <span class="font-mono">/data/backups/</span> abgelegt,
       die neuesten 10 werden behalten).
@@ -68,7 +81,7 @@
 
   <div class="mt-6 flex items-center gap-3 border-t border-gray-200 pt-5 dark:border-gray-800">
     <a href="/backup" class="btn-primary">Zurück zu Backup &amp; Restore</a>
-    {% if not error %}<a href="/transactions" class="btn-outline">Zu den Buchungen</a>{% endif %}
+    {% if not error and not reset %}<a href="/transactions" class="btn-outline">Zu den Buchungen</a>{% endif %}
   </div>
 </div>
 {% endblock %}

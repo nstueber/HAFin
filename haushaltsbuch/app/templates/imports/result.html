@@ -16,6 +16,12 @@
     <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
       <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Importiert</dt>
       <dd class="mt-1 text-2xl font-semibold text-green-600 dark:text-green-400">{{ imported }}</dd>
+      {% if auto_categorized %}
+      <dd class="mt-1 text-xs text-gray-500 dark:text-gray-400">davon {{ auto_categorized }} automatisch kategorisiert</dd>
+      {% endif %}
+      {% if auto_suggested %}
+      <dd class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ auto_suggested }} mit Kategorie-Vorschlag (in der Buchungsliste übernehmbar)</dd>
+      {% endif %}
     </div>
     {% if duplicates %}
     <button

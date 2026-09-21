@@ -325,6 +325,12 @@
     });
   };
 
+  // Bestaetigungswort fuer destruktive Aktionen (Backup & Restore): true, wenn das Eingabefeld das
+  // erwartete Wort enthaelt (ohne Leerraum, Gross-/Kleinschreibung egal) - gleiche Regel wie serverseitig.
+  window.hafinConfirmWordOk = function (input, word) {
+    return !!input && input.value.trim().toUpperCase() === word;
+  };
+
   // Generisches Dropdown-Panel (aktuell das "Ansicht anpassen"-Optionsmenue): Klick auf
   // einen [data-dropdown-toggle]-Button oeffnet/schliesst das per CSS-Selektor referenzierte
   // Panel (Klasse "hafin-dropdown-panel"); Klick ausserhalb oder Escape schliesst es wieder.

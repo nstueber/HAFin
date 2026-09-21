@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_icons.html" import plus %}
+
+{% block content %}
+{% if applied is not none %}
+<div class="alert-error !border-green-200 !bg-green-50 !text-green-700 dark:!border-green-900 dark:!bg-green-950/40 dark:!text-green-400">
+  Regeln angewendet: {{ applied }} Buchung{{ 'en' if applied != 1 else '' }} kategorisiert{% if applied_suggested %}, {{ applied_suggested }} {{ 'Vorschlag' if applied_suggested == 1 else 'Vorschläge' }} hinterlegt{% endif %}{% if applied_skipped %} ({{ applied_skipped }} wegen zwischenzeitlicher Änderung übersprungen){% endif %}.
+</div>
+{% endif %}
+
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <h2 class="text-lg font-semibold">Kategorisierungsregeln</h2>
+  <button type="button" class="btn-primary" onclick="document.getElementById('new-rule-dialog').showModal()">
+    {{ plus("h-4 w-4") }}
+    <span>Neue Regel</span>
+  </button>
+</div>
+
+{% include "categorization_rules/_list.html" %}
+
+<dialog id="new-rule-dialog" class="card modal-wide modal-dropdown backdrop:bg-gray-900/50"
+        {% if prefill_source %}{% for key, text in prefill_source.items() %}data-src-{{ key }}="{{ text }}" {% endfor %}{% endif %}>
+  <h3 class="text-base font-semibold">Neue Regel anlegen</h3>
+  {% if prefill_source %}
+  <div class="mt-3 rounded-lg border border-gray-200 p-3 text-xs dark:border-gray-800">
+    <p class="font-medium text-gray-700 dark:text-gray-200">Aus der Buchung übernehmen:</p>
+    <div class="mt-2 flex flex-wrap gap-2">
+      {% if prefill_source.purpose %}
+      <button type="button" class="btn-outline !px-3 !py-1 !text-xs" data-prefill-field="purpose" data-prefill-value="{{ prefill_source.purpose }}">
+        Verwendungszweck
+      </button>
+      {% endif %}
+      {% if prefill_source.payee %}
+      <button type="button" class="btn-outline !px-3 !py-1 !text-xs" data-prefill-field="payee" data-prefill-value="{{ prefill_source.payee }}">
+        Auftraggeber/Empfänger
+      </button>
+      {% endif %}
+    </div>
+    <p class="mt-2 text-gray-500 dark:text-gray-400">Tipp: den Vergleichswert auf das Wesentliche kürzen (z. B. nur „REWE“), damit die Regel auch künftige Buchungen trifft.</p>
+  </div>
+  {% endif %}
+  {% if form_error %}
+  <div class="alert-error mt-4">{{ form_error }}</div>
+  {% endif %}
+  <form method="post" action="/categorization-rules" class="mt-4">
+    {% set id_suffix = "new" %}
+    {% set form = form or {"field": "purpose", "operator": "contains", "value": "", "category_id": ""} %}
+    {% include "categorization_rules/_form_fields.html" %}
+    <div class="mt-5 flex items-center gap-3">
+      <button type="submit" class="btn-primary">Regel anlegen</button>
+      <button type="button" class="btn-outline" onclick="document.getElementById('new-rule-dialog').close()">Abbrechen</button>
+    </div>
+  </form>
+</dialog>
+<script>
+  (function () {
+    var dialog = document.getElementById("new-rule-dialog");
+    dialog.querySelectorAll("[data-prefill-field]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        dialog.querySelector("select[name=field]").value = btn.getAttribute("data-prefill-field");
+        dialog.querySelector("input[name=value]").value = btn.getAttribute("data-prefill-value");
+      });
+    });
+    // "Regel aus dieser Buchung erstellen": beim Wechsel des Feld-Dropdowns den Vergleichswert auf den passenden Wert
+    // der Buchung setzen (data-src-<feld>, gesetzt nur mit Buchungsbezug). Ein zuvor von Hand geaenderter Wert wird
+    // bewusst ueberschrieben - er gehoerte zum vorherigen Feld; der Dialog ist ein Schnellstart, die Uebernehmen-
+    // Buttons und das Eingabefeld bleiben fuer Feinarbeit.
+    var fieldSelect = dialog.querySelector("select[name=field]");
+    fieldSelect.addEventListener("change", function () {
+      var source = dialog.getAttribute("data-src-" + fieldSelect.value);
+      if (source !== null) dialog.querySelector("input[name=value]").value = source;
+    });
+    {% if open_new_dialog %}dialog.showModal();{% endif %}
+  })();
+</script>
+{% endblock %}
