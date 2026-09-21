@@ -44,13 +44,17 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+# Versionsquelle: app/version.py liest "version" zur Laufzeit aus /app/config.yaml
+COPY config.yaml ./config.yaml
+# Lizenzseite der App (Einstellungen -> Lizenzinformationen)
+COPY THIRD-PARTY-NOTICES.md ./THIRD-PARTY-NOTICES.md
 COPY --from=css-builder /build/app/static/css/app.css ./app/static/css/app.css
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
 
 # /data ist in Home Assistant das persistente App-Verzeichnis (Docker-Volume)
 ENV DATABASE_PATH=/data/haushaltsbuch.db
-# Wird in Backups (meta.app_version) und der Oberflaeche angezeigt
+# Fallback fuer die angezeigte Version (meta.app_version, Oberflaeche), falls config.yaml fehlt
 ENV APP_VERSION=${BUILD_VERSION}
 VOLUME ["/data"]
 

@@ -80,6 +80,11 @@ App-Version unabhängige Versionsnummer des Backup-Formats –, `app_version`, `
 Kennzahlen). Alle Verknüpfungen verwenden exportinterne UUIDs (`export_id`) statt Datenbank-IDs, deshalb ist das
 Backup in jede andere Instanz importierbar.
 
+## Version und Lizenzen
+
+Die installierte Version steht unten in der Seitenleiste und auf der Seite **Einstellungen**. Dort führt auch der
+Link **Lizenzinformationen** zu den verwendeten Drittkomponenten und ihren Lizenzen.
+
 ## Fehlersuche
 
 | Symptom | Ursache / Lösung |
@@ -140,16 +145,23 @@ Der schnelle Dev-Loop ohne Supervisor bleibt davon unabhängig: `docker compose 
 1. Repository in VS Code öffnen → „In Container erneut öffnen“ (nutzt `.devcontainer/devcontainer.json`).
 2. Im Container: **Terminal → Task ausführen → „Start Home Assistant“** (führt `supervisor_run` aus).
 3. Home Assistant unter <http://localhost:7123> öffnen und das Onboarding durchlaufen (Test-Benutzer anlegen).
-4. **Lokale App bereitstellen:** Solange noch kein Release veröffentlicht ist, würde Supervisor wegen
-   des `image:`-Felds versuchen, das (noch nicht vorhandene) Image zu ziehen. Deshalb im Container:
+4. **App installieren:** Der Workspace ist im Container als „Lokale Apps“-Repository eingehängt, die App
+   erscheint nach **Einstellungen → Apps → App-Store → ⋮ → Nach Updates suchen** unter „Lokale Apps“ als
+   **„Haushaltsbuch“** (Slug `local_haushaltsbuch`, Ordner `haushaltsbuch/` dieses Repositories – es gibt keine
+   separate Kopie). Da `config.yaml` ein `image:` enthält, zieht Supervisor `ghcr.io/nstueber/hafin-haushaltsbuch:<version>`;
+   installierbar ist also nur eine bereits veröffentlichte Version.
+5. **Update-Pfad / aktuellen Code testen:** Die Versionsnummer der installierten App direkt setzen:
    ```bash
-   bash .devcontainer/sync-dev-app.sh          # legt eine lokal baubare Kopie an
+   bash .devcontainer/sync-dev-app.sh 0.2.0 --local-build   # version setzen + image: auskommentieren
    ```
-   Sie erscheint nach **Einstellungen → Apps → App-Store → ⋮ → Nach Updates suchen** unter
-   „Lokale Apps“ als **„Haushaltsbuch (Dev)“** (ohne `image:`, eigener Slug `haushaltsbuch_dev`,
-   wird lokal gebaut). Der Eintrag „Haushaltsbuch“ ohne „(Dev)“ ist derselbe Ordner mit
-   `image:`-Feld und für diese Tests nicht relevant.
-5. Nach Codeänderungen: Skript erneut ausführen, die App im Store **neu bauen/aktualisieren**.
+   Nach „Nach Updates suchen“ zeigt der Store bei „Haushaltsbuch“ „Update verfügbar“; „Aktualisieren“ baut die App
+   dann lokal aus dem Dockerfile (Supervisor: `docker buildx build`), der aktuelle Code des Arbeitsverzeichnisses ist
+   also testbar. Nach Codeänderungen dasselbe Skript erneut ausführen (bzw. „Neu bauen“ im Store, solange die
+   Version gleich bleibt). Ohne `--local-build` bleibt `image:` aktiv: das Update wird erkannt, das Ausführen zieht
+   aber `…:<version>` aus GHCR und gelingt erst nach dem Release.
+   **Das Skript ändert die echte `config.yaml`:** nach dem Test `bash .devcontainer/sync-dev-app.sh --reset`
+   (stellt Version **und** `image:` auf den letzten Commit zurück). Der Release-Workflow bricht ab, falls ein
+   auskommentiertes `image:` committet wurde.
 
 **Was vor einem Release geprüft werden soll:**
 
@@ -158,4 +170,4 @@ Der schnelle Dev-Loop ohne Supervisor bleibt davon unabhängig: `docker compose 
 | Ingress | App über die Seitenleiste öffnen; alle Seiten durchklicken, Formulare abschicken, CSV hochladen, Dashboard-Drilldown, Dialoge (kein Link darf ins HA-Root führen). |
 | Options-Schema | Die App hat keine Optionen – Reiter „Konfiguration“ zeigt nichts; sicherstellen, dass das so bleibt, bzw. bei neuen Optionen `options`/`schema` in `config.yaml` ergänzen. |
 | Backup/Restore | Daten anlegen → Backup erstellen (App wird dafür kurz gestoppt) → Daten ändern → Backup einspielen → Daten müssen wieder da sein. |
-| Update-Pfad | Installierte Version → `sync-dev-app.sh 0.1.1` (überschreibt die Version der Dev-Kopie) → Update im Store anstoßen → Daten und Schema müssen erhalten bleiben (Auto-Migration beim Start). |
+| Update-Pfad | Installierte Version → `sync-dev-app.sh <neue Version> --local-build` → „Nach Updates suchen“ → Store zeigt „Update verfügbar“ → Update anstoßen (lokaler Build) → Daten und Schema müssen erhalten bleiben (Auto-Migration beim Start). Danach `sync-dev-app.sh --reset`. |

@@ -1,7 +1,7 @@
 {% from "_icons.html" import sun, moon, dashboard, upload, banknotes, cog, arrow_left %}
 {# Unterseiten des Einstellungen-Bereichs: dort ist "Einstellungen" in der Navigation aktiv und oben
    erscheint der Zurueck-Link zur Hub-Seite #}
-{% set settings_children = ['accounts', 'categories', 'mapping_profiles', 'backup'] %}
+{% set settings_children = ['accounts', 'categories', 'mapping_profiles', 'backup', 'licenses'] %}
 {% set current_nav = 'settings' if (active_nav == 'settings' or active_nav in settings_children) else active_nav %}
 
 {% macro nav_item(href, icon_html, label, key, active_nav, layout, short=none) %}
@@ -66,6 +66,7 @@
         {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', current_nav, 'sidebar') }}
         {{ nav_item('/settings', cog('h-5 w-5'), 'Einstellungen', 'settings', current_nav, 'sidebar') }}
       </nav>
+      <p class="px-6 py-4 text-xs text-gray-400 dark:text-gray-500" title="Version">v{{ app_version }}</p>
     </aside>
 
     <!-- Tablet: schmale Icon-Rail -->
@@ -77,6 +78,7 @@
         {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', current_nav, 'rail') }}
         {{ nav_item('/settings', cog('h-5 w-5'), 'Einstellungen', 'settings', current_nav, 'rail') }}
       </nav>
+      <p class="max-w-full truncate px-1 py-3 text-[10px] text-gray-400 dark:text-gray-500" title="Version">v{{ app_version }}</p>
     </aside>
 
     <!-- Hauptspalte: Titelleiste + Seiteninhalt -->
@@ -92,7 +94,7 @@
       <main class="flex-1 pb-20 md:pb-8">
         <div class="mx-auto max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
           {% if active_nav in settings_children %}
-          <nav aria-label="Breadcrumb" class="-mb-1.5">
+          <nav aria-label="Breadcrumb">
             <a href="/settings" class="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition-colors hover:text-accent dark:text-gray-400 dark:hover:text-accent">
               {{ arrow_left("h-4 w-4") }}
               <span>Einstellungen</span>

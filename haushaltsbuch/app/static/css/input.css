@@ -415,4 +415,40 @@
   tr.card-open .card-toggle .lbl-less {
     display: inline;
   }
+
+  /* Gerenderte Markdown-Seite (Lizenzinformationen). Preflight setzt Ueberschriften/Listen/Links
+     zurueck - hier nur das Noetigste fuer lesbaren Fliesstext, keine allgemeine Typografie-Klasse. */
+  .notices {
+    @apply text-sm leading-relaxed text-gray-700 dark:text-gray-300;
+  }
+  .notices h1 {
+    @apply mb-3 text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100;
+  }
+  .notices h2 {
+    @apply mb-3 mt-8 border-t border-gray-200 pt-6 text-base font-semibold text-gray-900 dark:border-gray-800 dark:text-gray-100;
+  }
+  .notices h3 {
+    @apply mb-2 mt-6 text-sm font-semibold text-gray-900 dark:text-gray-100;
+  }
+  .notices p {
+    @apply my-3;
+  }
+  .notices a {
+    @apply text-accent underline underline-offset-2 hover:text-accent-hover;
+  }
+  .notices code {
+    @apply rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-gray-800;
+  }
+  .notices .table-scroll {
+    @apply my-4 overflow-x-auto;
+  }
+  .notices table {
+    @apply w-full min-w-[40rem] border-collapse text-left;
+  }
+  .notices th {
+    @apply border-b border-gray-200 px-3 py-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-gray-800 dark:text-gray-400;
+  }
+  .notices td {
+    @apply border-b border-gray-100 px-3 py-2 align-top dark:border-gray-800/60;
+  }
 }

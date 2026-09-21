@@ -23,7 +23,6 @@ Umbuchungs-Vorschlaegen). ``transactions`` setzt ``accounts`` + ``categories`` v
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -42,6 +41,7 @@ from app.models import (
     TransactionSplit,
     TransactionType,
 )
+from app.version import get_app_version
 
 BACKUP_FORMAT = "haushaltsbuch-backup"
 # Versionsnummer des BACKUP-FORMATS (unabhaengig von der App-Version). Bei inkompatiblen
@@ -71,7 +71,7 @@ class ImportFailed(BackupError):
 
 
 def app_version() -> str:
-    return os.environ.get("APP_VERSION", "dev")
+    return get_app_version()
 
 
 def with_dependencies(groups: Iterable[str]) -> list[str]:

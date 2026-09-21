@@ -88,6 +88,7 @@ App: http://localhost:8000
 
 ```
 repository.yaml               HA-Repository-Metadaten
+LICENSE  THIRD-PARTY-NOTICES.md   MIT-Lizenz und Lizenzen der Drittkomponenten
 docker-compose.yml            schneller Dev-Loop ohne Supervisor
 .devcontainer/  .vscode/      lokale HA-Test-Instanz (Supervisor + HA)
 .github/workflows/release.yml Multi-Arch-Build + GHCR-Publish bei Tag vX.Y.Z
@@ -103,6 +104,7 @@ haushaltsbuch/                die Home-Assistant-App
     database.py   DB-Engine & Session, leichte Auto-Migration für neue Spalten
     ingress.py    HA-Ingress: URL-Umschreibung hinter dem Ingress-Pfad (Middleware)
     system_categories.py  Zugriff auf die Systemkategorien per system_key
+    version.py    App-Version aus config.yaml (Laufzeit)
     templating.py Zentrales Jinja2Templates-Objekt inkl. format_iban-Filter
     main.py       FastAPI-App, Health-Check, Startseite
 ```
@@ -191,6 +193,21 @@ Restore - analog zum Einstellungen-Bereich von Home Assistant. Die Routen der Un
 (auch Bearbeiten-/Wizard-/Ergebnis-/Fehlerseiten). Eine neue Unterseite der Einstellungen braucht also nur den passenden
 `active_nav` (und einen Eintrag in `settings_children`, falls es ein neuer Schlüssel ist) plus kachel im Hub.
 Mobil (Bottom-Nav) haben vier Einträge wieder Platz für Beschriftungen (auch bei 320px ohne Abschneiden geprüft).
+
+### Version & Lizenzinformationen
+
+- **Version:** einzige Quelle ist `version` in `haushaltsbuch/config.yaml`. `app/version.py` liest sie zur Laufzeit
+  (Regex, ohne YAML-Abhängigkeit; Fallback: Umgebungsvariable `APP_VERSION`, sonst `dev`) und `templating.py`
+  stellt sie als Jinja-Global `app_version` bereit. Angezeigt wird sie unten in der Desktop-Sidebar und der
+  Tablet-Rail (`base.html`) sowie als Zeile "Haushaltsbuch vX.Y.Z" auf dem Einstellungen-Hub; außerdem steht sie in
+  `meta.app_version` der Backups. Das Dockerfile kopiert dafür `config.yaml` ins Image (`/app/config.yaml`).
+  Die mobile Bottom-Nav hat keinen Platz dafür - dort gibt es die Zeile im Hub.
+- **Lizenzen:** `LICENSE` (MIT) und `THIRD-PARTY-NOTICES.md` im Repo-Root. Die App zeigt die Notices unter
+  `GET /settings/licenses` (Link "Lizenzinformationen" im Hub) als gerendertes Markdown (Python-Markdown,
+  `tables`-Erweiterung; Stil `.notices` in `input.css`). Weil der Docker-Build-Kontext `haushaltsbuch/` ist, liest die
+  App eine **Kopie** `haushaltsbuch/THIRD-PARTY-NOTICES.md`; der Release-Workflow bricht ab, wenn sie vom Root-Exemplar
+  abweicht. Beim Ändern also beide Dateien aktualisieren (`cp THIRD-PARTY-NOTICES.md haushaltsbuch/`). Bei neuen
+  Frontend-/Python-Abhängigkeiten den Eintrag in der Tabelle ergänzen.
 
 ## Kategorien & Kategorisierung
 

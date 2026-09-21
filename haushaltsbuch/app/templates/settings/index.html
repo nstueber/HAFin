@@ -28,4 +28,10 @@
   {{ tile("/backup", archive_box("h-5 w-5"), "Backup & Restore",
           "Alle Daten als portables JSON-Backup exportieren und in eine andere Instanz importieren.") }}
 </div>
+
+<p class="pt-2 text-center text-sm text-gray-500 dark:text-gray-400">
+  Haushaltsbuch v{{ app_version }}
+  <span aria-hidden="true" class="mx-1.5">·</span>
+  <a href="/settings/licenses" class="underline-offset-2 hover:text-accent hover:underline">Lizenzinformationen</a>
+</p>
 {% endblock %}

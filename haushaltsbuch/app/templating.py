@@ -3,6 +3,8 @@ from typing import Optional
 
 from fastapi.templating import Jinja2Templates
 
+from app.version import get_app_version
+
 BASE_DIR = Path(__file__).resolve().parent
 
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -40,5 +42,6 @@ def format_currency(value: Optional[float], show_sign: bool = False) -> str:
     return f"{sign}{formatted} €"
 
 
+templates.env.globals["app_version"] = get_app_version()
 templates.env.filters["format_iban"] = format_iban
 templates.env.filters["format_currency"] = format_currency

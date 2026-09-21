@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  {% if notices_html %}
+  <article class="notices">{{ notices_html | safe }}</article>
+  {% else %}
+  <p class="text-sm text-gray-500 dark:text-gray-400">Die Lizenzinformationen sind in dieser Installation nicht verfügbar.</p>
+  {% endif %}
+</div>
+{% endblock %}
