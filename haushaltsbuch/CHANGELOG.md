@@ -6,6 +6,63 @@ Alle nennenswerten Änderungen an dieser App werden hier festgehalten. Das Forma
 
 ## [Unveröffentlicht]
 
+## [0.3.1] - 2026-09-21
+
+### Hinzugefügt
+- **Kategorisierungsregeln** (Einstellungen → Kategorisierungsregeln): Regeln aus Feld (Verwendungszweck oder
+  Auftraggeber/Empfänger), Bedingung (enthält / beginnt mit / ist exakt), Vergleichswert und Ziel-Kategorie ordnen neu
+  importierte Buchungen automatisch einer Kategorie zu. Die Reihenfolge ist die Priorität (Auf/Ab-Pfeile), die erste
+  passende Regel gewinnt; bereits kategorisierte Buchungen bleiben unberührt. Im Detailfenster einer Buchung erstellt
+  „Regel aus dieser Buchung erstellen“ eine vorausgefüllte Regel, und „Regeln jetzt anwenden“ kategorisiert
+  rückwirkend bisher unkategorisierte Buchungen.
+- **Budgets** (Einstellungen → Budgets): ein Monatsbetrag je Kategorie (Ober- oder Unterkategorie). Die Übersicht zeigt bei
+  Zeitraum „Monat“ pro Budget einen Fortschrittsbalken (grün / gelb ab 80 % / rot über 100 %); Ausgaben einer
+  Unterkategorie zählen auch ins Budget der Oberkategorie.
+- **Alle Daten löschen** (Backup & Restore): kompletter Reset mit Verlust-Zusammenfassung, Bestätigungswort `LÖSCHEN` und
+  automatischem Sicherheits-Backup vor dem Löschen – dieselbe Absicherung wie beim Import-Modus „ersetzen“.
+- Kategorisierungsregeln und Budgets sind Teil von Backup & Restore (eigene, auswählbare Datengruppen; ältere
+  Backup-Dateien ohne sie lassen sich weiterhin importieren).
+
+- **Kategorisierungsregeln: fest zuweisen oder nur vorschlagen.** Pro Regel wählbar. Eine Vorschlags-Regel setzt die
+  Kategorie nicht: die Buchung bleibt unkategorisiert (auch im Filter „nur unkategorisierte“) und die Buchungsliste zeigt
+  „Vorschlag: … übernehmen“ mit Ein-Klick-Übernahme. Ein Regel-Vorschlag hat Vorrang vor dem Vorschlag anhand
+  wiederkehrender Buchungen.
+- **Vorschau bei „Regeln auf bestehende Buchungen anwenden“:** statt blind alle Treffer zu übernehmen, zeigt eine Liste
+  Buchung, Regel und Ziel-Kategorie mit Checkbox je Treffer (standardmäßig alle angehakt). Erst „Ausgewählte anwenden“
+  ändert etwas.
+- **„Regel aus dieser Buchung erstellen“:** Beim Umschalten des Feld-Dropdowns (Verwendungszweck ↔ Auftraggeber/Empfänger) wird
+  der Vergleichswert automatisch auf den passenden Text der Buchung gesetzt.
+- **Budgets auch in der Jahresansicht** (Monatsbetrag × 12 gegen die Jahres-Ausgaben; bei Tag/Woche weiter ausgeblendet).
+  Die Budget-Zeilen sind klickbar und öffnen das Drilldown mit den Buchungen der Kategorie im gewählten Zeitraum.
+
+### Geändert
+- **Übersicht:** Der Umbuchungsfilter steht beim ersten Laden auf „Ohne Umbuchungen“ (statt „Alle Buchungen“). Eine ausdrücklich
+  gewählte Einstellung – auch „Alle Buchungen“ – bleibt beim Blättern und Wechseln des Zeitraums erhalten.
+- **Darkmode an das Home-Assistant-Theme angelehnt:** neutrale statt bläulicher Grautöne (Hintergrund `#111111`, Karten
+  `#1c1c1c`, Werte aus dem HA-Frontend); die hellen Grautöne sind ebenfalls neutral. Auch die Auswahlfelder (z. B. „Alle Konten“)
+  sind im Darkmode jetzt dunkel statt weiß.
+- **Backup-Import:** Es ist immer genau ein Import-Modus wählbar. Bei leerer Datenbank ist „Bestehende Daten ersetzen“
+  ausgegraut und „In leere Datenbank importieren“ vorausgewählt; bei gefüllter Datenbank umgekehrt.
+- **Übersicht:** Die Zeitraum-Auswahl (Tag/Woche/Monat/Jahr) ist jetzt ein zusammenhängendes Segmented-Control; der
+  Umbuchungsfilter ist ein Filter-Symbol mit Dropdown (Alle Buchungen / Nur Umbuchungen / Ohne Umbuchungen) und zeigt
+  einen Punkt, wenn gefiltert wird. Auch der Diagramm-Modus (Einfach/Gestapelt) nutzt das Segmented-Control.
+
+### Behoben
+- **„Neue Regel“-Dialog:** Die aufklappende Kategorie-Auswahl wurde vom Dialograhmen abgeschnitten (Scrollleiste im
+  Dialog). Sie ragt jetzt über den Dialog hinaus bzw. der Dialog reserviert genug Höhe.
+- **Backup-Import unter Home Assistant:** Der Bereich zum Bestätigen mit `LÖSCHEN` fehlte und „Import starten“ blieb
+  wirkungslos. Ursache war dieselbe wie beim Lizenzseiten-Problem: Nach einem Update lieferte der Browser noch die alte
+  `enhancements.js` aus dem Cache. Mit den versionierten Datei-URLs (siehe unten) ist das behoben.
+- Nach einem App-Update konnte der Browser (hinter dem Home-Assistant-Ingress) noch das alte Stylesheet bzw. die
+  alten Skripte aus dem Cache verwenden; neue Seiten wie „Lizenzinformationen“ erschienen dann unformatiert.
+  Statische Dateien tragen jetzt die App-Version in der URL (`?v=…`) und werden bei jedem Aufruf per ETag
+  neu validiert.
+
+### Hinweis
+- Neue Tabellen und Spalten (Kategorisierungsregeln, Budgets, Kategorie-Vorschläge) werden beim Start automatisch angelegt;
+  bestehende Daten bleiben erhalten. Vor dem Update empfiehlt sich trotzdem ein Backup (Einstellungen → Backup & Restore).
+
+
 ## [0.2.0] - 2026-09-21
 
 ### Hinzugefügt
@@ -53,6 +110,7 @@ Alle nennenswerten Änderungen an dieser App werden hier festgehalten. Das Forma
 - Schema-Änderungen an der Datenbank werden beim Start automatisch nachgezogen; vor einem
   Update empfiehlt sich trotzdem ein Backup.
 
-[Unveröffentlicht]: https://github.com/nstueber/HAFin/compare/v0.2.0...HEAD
+[Unveröffentlicht]: https://github.com/nstueber/HAFin/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/nstueber/HAFin/compare/v0.2.0...v0.3.1
 [0.2.0]: https://github.com/nstueber/HAFin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nstueber/HAFin/releases/tag/v0.1.0
