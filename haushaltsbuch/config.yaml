@@ -1,5 +1,5 @@
 name: "Haushaltsbuch"
-version: "0.1.0"
+version: "0.2.0"
 slug: "haushaltsbuch"
 description: "Haushaltsbuch zur Verwaltung von Ein- und Ausgaben"
 url: "https://github.com/nstueber/HAFin/tree/main/haushaltsbuch"
