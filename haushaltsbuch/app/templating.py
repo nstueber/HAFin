@@ -2,7 +2,9 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi.templating import Jinja2Templates
+from starlette.requests import Request
 
+from app.ingress import get_ingress_prefix
 from app.version import get_app_version
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -42,6 +44,15 @@ def format_currency(value: Optional[float], show_sign: bool = False) -> str:
     return f"{sign}{formatted} €"
 
 
+def ingress_base_path(request: Request) -> str:
+    """Fuer ``base.html``: validierter Ingress-Praefix des aktuellen Requests, eingebettet als
+    ``window.HB_BASE_PATH`` - Grundlage des ``hbUrl()``-Helpers in ``enhancements.js`` (siehe
+    ``app/ingress.py`` fuer den Hintergrund). ``request`` steht dank ``TemplateResponse(request=...)``
+    in jedem Template automatisch zur Verfuegung."""
+    return get_ingress_prefix(request)
+
+
 templates.env.globals["app_version"] = get_app_version()
+templates.env.globals["ingress_base_path"] = ingress_base_path
 templates.env.filters["format_iban"] = format_iban
 templates.env.filters["format_currency"] = format_currency

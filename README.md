@@ -35,14 +35,35 @@ und Buchungen), keine echten Finanzdaten:
   `build.yaml`), `haushaltsbuch/run.sh` (Startskript, `exec uvicorn` als PID 1).
 - **Ingress:** Hinter dem HA-Ingress liegt die App unter `/api/hassio_ingress/<token>/`; Supervisor
   entfernt das Präfix und liefert es im Header `X-Ingress-Path`. Da alle Templates/JS root-relative
-  URLs nutzen, schreibt `app/ingress.py` (`IngressPathMiddleware`) sie zentral in den HTML-Antworten
-  und `Location`-Headern um - nur wenn der Header vorhanden und im erwarteten Format ist, sonst
-  bleibt jede Antwort unverändert (lokaler Betrieb, Docker). Neue Templates dürfen weiterhin einfach
-  `/pfad` schreiben; nur *neue Top-Level-Routen* müssen in `_JS_RE` (URL-Literale in Inline-JS/JSON)
-  ergänzt werden, Attribute (`href`, `src`, `action`, `hx-*`) werden unabhängig vom Pfad erfasst.
+  URLs nutzen, gibt es zwei sich ergänzende Mechanismen (`app/ingress.py`):
+  - **Serverseitig gerenderte Attribute** (`href`, `src`, `action`, `hx-*`) schreibt die
+    `IngressPathMiddleware` zentral in den HTML-Antworten und `Location`-Headern um - unabhängig
+    vom konkreten Pfad, nur wenn der Header vorhanden und im erwarteten Format ist (sonst bleibt
+    jede Antwort unverändert: lokaler Betrieb, Docker). Neue Templates dürfen hier weiterhin
+    einfach `/pfad` schreiben, ohne irgendwo eine Liste zu pflegen.
+  - **JS-seitig gebaute Request-URLs** (z. B. `hafinOpenDialog('/x', …)`, oder eine URL aus einem
+    per `|tojson` eingebetteten JSON-Blob wie den Dashboard-Chart-Daten) laufen NICHT durch die
+    Middleware, weil der Request erst im Browser nach dem Ausliefern der Seite entsteht. Dafür
+    bettet `base.html` den validierten Präfix als `window.HB_BASE_PATH` ein (Jinja-Global
+    `ingress_base_path(request)` in `templating.py`, nutzt dieselbe Validierung wie die
+    Middleware, `app/ingress.py: get_ingress_prefix()`); der Helper `hbUrl(path)` in
+    `enhancements.js` stellt ihn voran. **Neuer JS-Code, der selbst einen Request auslöst, MUSS
+    seine URL durch `hbUrl()` schicken** (siehe `hafinOpenDialog`, der einzige aktuelle Aufrufer) -
+    das ersetzt eine frühere, manuell gepflegte Liste bekannter Routennamen für genau diesen Fall
+    und skaliert ohne Pflegeaufwand auf neue Routen.
 - **Schema-Migration:** Dieses Projekt nutzt bewusst **kein Alembic** - `init_db()` legt beim
   Start fehlende Tabellen/Spalten an (`_add_missing_columns`), `run.sh` braucht deshalb keinen
-  separaten Migrationsschritt (Hinweis im Skript, falls Alembic später eingeführt wird).
+  separaten Migrationsschritt (Hinweis im Skript, falls Alembic später eingeführt wird). Das deckt
+  nur additive Änderungen ab (neue Spalte/Tabelle mit Skalar-Default) - **verbindliche Regel:**
+  eine Schemaänderung, die ein Umbenennen, einen Typwechsel oder ein Löschen erfordern würde, wird
+  stattdessen immer als *neue Spalte hinzufügen → bestehende Daten in einer Backfill-Routine
+  übernehmen → alte Spalte im Code schlicht ignorieren* umgesetzt (siehe `category_types.py`/
+  `backfill_category_types()` als Beispiel für dieses Muster). Ein direktes `RENAME`/`DROP COLUMN`
+  gegen eine SQLite-Datei im Feld, die schon produktive Daten enthält, wird nicht gemacht. Zur
+  Nachvollziehbarkeit trägt `_ensure_schema_version()` in `database.py` bei jedem Start eine
+  Konstante `SCHEMA_VERSION` in eine Ein-Zeilen-Tabelle `app_meta` ein (additiv erhöhen, nie
+  herabsetzen) - aktuell nur eine sichtbare Markierung ohne eigene Verzweigungslogik, aber die
+  Grundlage dafür, sobald eine Migration wissen muss, von welchem Stand aus sie startet.
 - **Releases:** SemVer; `version` in `config.yaml`, Git-Tag `vX.Y.Z` und Eintrag in
   `haushaltsbuch/CHANGELOG.md` müssen übereinstimmen, dann `git tag vX.Y.Z && git push --tags` - der
   Workflow `.github/workflows/release.yml` baut `amd64`+`aarch64` und pusht nach GHCR (Ablauf und
@@ -123,6 +144,28 @@ haushaltsbuch/                die Home-Assistant-App
 
 SQLite-Datei, Pfad über Umgebungsvariable `DATABASE_PATH` konfigurierbar
 (Standard: `/data/haushaltsbuch.db`, passend für den Docker-Container).
+
+## Tests
+
+Zwei sich ergänzende Test-Ebenen, keine ersetzt die andere:
+
+- **Unit-Tests der Service-Schicht** (`haushaltsbuch/tests/`, `pytest`): reine Python-Tests gegen
+  `app/services/{rules,category_types,csv_detection,backup}.py`, ohne HTTP-Server und ohne
+  Browser - eine In-Memory-SQLite-Engine pro Test (`tests/conftest.py`, `SQLModel.metadata` direkt
+  aus `app.models`, unabhängig von `app.database`/`DATABASE_PATH`). Laufzeit im Bereich von
+  Zehntelsekunden für die gesamte Suite - gedacht als schnelles Feedback direkt beim Ändern der
+  reinen Business-Logik, bevor man überhaupt einen Server startet.
+  ```bash
+  cd haushaltsbuch
+  pip install -r requirements-dev.txt   # einmalig, installiert zusätzlich pytest
+  pytest                                 # liest pytest.ini (pythonpath=., testpaths=tests)
+  ```
+- **Playwright-Ende-zu-Ende-Tests** (`~/hafin-test-data/scripts/`, außerhalb dieses Repos, lokal
+  in einem eigenen Git-Repository versioniert): starten einen echten Uvicorn-Prozess gegen
+  eine frische Temp-SQLite-Datenbank und steuern einen echten Chromium-Browser - decken UI,
+  htmx-Interaktionen, Ingress-Verhalten und Screenshots ab, die reine Unit-Tests nicht sehen
+  können. Deutlich langsamer (Sekunden bis Minuten je Datei), deshalb der zweite, nicht der
+  einzige Testweg.
 
 ## Mapping-Profil aus Beispiel-CSV anlegen
 

@@ -2,15 +2,26 @@
 
 Hinter dem HA-Ingress erreicht der Browser die App unter einem Pfad-Praefix
 (``/api/hassio_ingress/<token>/``), das Supervisor vor dem Weiterleiten entfernt und
-im Header ``X-Ingress-Path`` mitschickt. Die Templates und JS-Snippets dieser App
-verwenden ausschliesslich root-relative URLs (``/accounts``, ``/static/...``, htmx-
-Pfade, Redirects) - die wuerden im Ingress-Iframe auf das HA-Root statt auf die App
-zeigen.
+im Header ``X-Ingress-Path`` mitschickt. Die Templates dieser App verwenden
+ausschliesslich root-relative URLs (``/accounts``, ``/static/...``, htmx-Pfade,
+Redirects) - die wuerden im Ingress-Iframe auf das HA-Root statt auf die App zeigen.
 
-Statt hunderte URLs in Templates/JS anzufassen, schreibt diese Middleware die
-root-relativen URLs zentral in den Antworten um - aber NUR, wenn der Header vorhanden
-ist. Ohne Header (lokaler Docker-/Dev-Betrieb, direkter Zugriff auf Port 8000) bleibt
-jede Antwort byte-identisch.
+Zwei sich ergaenzende Mechanismen loesen das:
+
+1) **Serverseitig gerenderte HTML-Attribute** (``href``/``hx-get``/``hx-post``/...) schreibt
+   diese Middleware zentral in der Antwort um - aber NUR, wenn der Header vorhanden ist. Ohne
+   Header (lokaler Docker-/Dev-Betrieb, direkter Zugriff auf Port 8000) bleibt jede Antwort
+   byte-identisch.
+2) **JS-seitig gebaute Request-URLs** (bisher: ``hafinOpenDialog('/x')``) laufen NICHT durch
+   diese Middleware, weil das JS diese Requests erst nach dem Ausliefern der Seite abschickt.
+   Frueher gab es dafuer eine zweite Regex mit einer manuell gepflegten Liste bekannter
+   Routennamen ("/transactions", "/categories", ...) - fragil, weil jede neue Route dort
+   ergaenzt werden musste. Stattdessen bettet ``base.html`` den validierten Praefix als
+   ``window.HB_BASE_PATH`` ein (siehe ``get_ingress_prefix()`` unten, ueber den Jinja-Global
+   ``ingress_base_path`` in ``templating.py``); ``hafinOpenDialog()`` in ``enhancements.js``
+   stellt ihn ueber den Helper ``hbUrl(path)`` selbst voran. Jeder neue JS-ausgeloeste Request
+   MUSS durch ``hbUrl()`` laufen (siehe README, technischer Teil) statt sich auf eine gepflegte
+   Routenliste zu verlassen.
 """
 
 import re
@@ -22,35 +33,37 @@ from starlette.responses import Response
 # Nur das echte Supervisor-Format akzeptieren (Header wird in HTML eingebettet).
 _INGRESS_PREFIX_RE = re.compile(r"^/api/hassio_ingress/[A-Za-z0-9_-]+$")
 
-# 1) HTML-Attribute mit root-relativer URL (href="/x", hx-post='/x', action="/" ...).
-#    "//host" (protokollrelativ) bleibt unangetastet.
+# HTML-Attribute mit root-relativer URL (href="/x", hx-post='/x', action="/" ...).
+# "//host" (protokollrelativ) bleibt unangetastet.
 _ATTR_RE = re.compile(
     r"""((?:href|src|action|formaction|hx-get|hx-post|hx-put|hx-patch|hx-delete|hx-push-url)"""
     r"""\s*=\s*["'])/(?!/)""",
     re.IGNORECASE,
 )
 
-# 2) URL-Stringliterale in Inline-JS/JSON (hafinOpenDialog('/x'), {"url": "/x"}) - bewusst
-#    auf die bekannten Top-Level-Routen dieser App beschraenkt, damit normale Texte mit
-#    Anfuehrungszeichen und Schraegstrich nicht versehentlich umgeschrieben werden.
-_JS_RE = re.compile(
-    r"""(["'`])/((?:transactions|categories|accounts|import|mapping-profiles|categorization-rules|budgets|dashboard|backup|settings|static|health)"""
-    r"""(?=[/?#"'`\s]|$))"""
-)
+
+def get_ingress_prefix(request: Request) -> str:
+    """Validierter Ingress-Pfad-Praefix aus dem Request (ohne trailing "/"), sonst "".
+
+    Einzige Quelle der Validierung - von der Middleware UND von ``ingress_base_path()``
+    (Jinja-Global, bettet ``window.HB_BASE_PATH`` in ``base.html`` ein) verwendet, damit
+    beide garantiert denselben Praefix sehen.
+    """
+    prefix = request.headers.get("x-ingress-path", "").rstrip("/")
+    if not prefix or not _INGRESS_PREFIX_RE.match(prefix):
+        return ""
+    return prefix
 
 
 def rewrite_html(text: str, prefix: str) -> str:
-    # Reihenfolge wichtig: erst Attribute, dann Literale - das Ergebnis der ersten
-    # Ersetzung ("/api/hassio_ingress/...") matcht die zweite Regex nicht erneut.
-    text = _ATTR_RE.sub(lambda m: f"{m.group(1)}{prefix}/", text)
-    return _JS_RE.sub(lambda m: f"{m.group(1)}{prefix}/{m.group(2)}", text)
+    return _ATTR_RE.sub(lambda m: f"{m.group(1)}{prefix}/", text)
 
 
 class IngressPathMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        prefix = request.headers.get("x-ingress-path", "").rstrip("/")
-        if not prefix or not _INGRESS_PREFIX_RE.match(prefix):
+        prefix = get_ingress_prefix(request)
+        if not prefix:
             return response
 
         location = response.headers.get("location")

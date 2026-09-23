@@ -47,6 +47,9 @@
   <script src="/static/js/theme.js?v={{ app_version }}"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/list.js/2.3.1/list.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/js/tom-select.complete.min.js"></script>
+  {# Ingress-Praefix fuer JS-seitig gebaute Request-URLs (hbUrl() in enhancements.js) - leerer
+     String ausserhalb von Ingress. Muss vor enhancements.js stehen. #}
+  <script>window.HB_BASE_PATH = {{ ingress_base_path(request)|tojson }};</script>
   <script src="/static/js/enhancements.js?v={{ app_version }}"></script>
   {% block extra_head %}{% endblock %}
 </head>

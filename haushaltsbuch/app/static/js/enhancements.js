@@ -2,6 +2,14 @@
   // Registry aller List.js-Instanzen (Tabellen mit Sortierung/Suche), Key = Container-ID.
   window.hafinLists = window.hafinLists || {};
 
+  // Ingress-Praefix fuer root-relative URLs, die JS selbst fuer einen Request baut (statt eines
+  // serverseitig gerenderten href/hx-*-Attributs, das IngressPathMiddleware bereits umschreibt,
+  // siehe app/ingress.py). window.HB_BASE_PATH kommt aus base.html (leer ausserhalb von Ingress).
+  // Jeder neue JS-ausgeloeste Request MUSS seine URL durch hbUrl() schicken - siehe README.
+  window.hbUrl = function (path) {
+    return (window.HB_BASE_PATH || "") + path;
+  };
+
   // Zentrale Zahlenformatierung fuer alles, was clientseitig (nicht per Jinja-
   // Filter format_currency) gerendert wird - z.B. Chart.js-Tooltips/Achsen oder
   // live nachgerechnete Werte wie der Bargeld-Aufteilen-Restbetrag. Deutsches
@@ -31,7 +39,7 @@
   // htmx.ajax() statt eines deklarativen hx-get+hx-on Kombos, damit das Verhalten
   // nicht von der genauen htmx-Version/Attribut-Syntax abhaengt.
   window.hafinOpenDialog = function (url, dialogId, contentId) {
-    htmx.ajax("GET", url, { target: "#" + contentId, swap: "innerHTML" }).then(function () {
+    htmx.ajax("GET", hbUrl(url), { target: "#" + contentId, swap: "innerHTML" }).then(function () {
       var dialog = document.getElementById(dialogId);
       if (dialog) dialog.showModal();
     });
