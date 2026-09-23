@@ -3,7 +3,7 @@
 # Kein build.yaml: das Basis-Image steht direkt im FROM (Stand der HA-App-Doku).
 
 # --- Stage 1: Tailwind CSS kompilieren (Standalone-CLI, kein Node.js nötig) ---
-FROM alpine:3.20 AS css-builder
+FROM alpine:3.24 AS css-builder
 ARG TARGETARCH
 
 RUN apk add --no-cache curl libstdc++ libgcc
