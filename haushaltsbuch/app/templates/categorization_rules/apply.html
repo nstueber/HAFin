@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_icons.html" import sparkles %}
+{% from "_icons.html" import sparkles, warning %}
 
 {% block content %}
 <div class="card">
@@ -44,6 +44,7 @@
             <td class="text-xs text-gray-600 dark:text-gray-300" data-label="Regel">{{ r.rule_text }}</td>
             <td class="text-xs" data-label="Kategorie">
               → {{ r.category_path }}
+              {% if r.type_hint %}<span class="type-mismatch ml-1 inline-flex align-middle text-amber-500 dark:text-amber-400" role="img" title="{{ r.type_hint }}" aria-label="{{ r.type_hint }}">{{ warning("h-3.5 w-3.5") }}</span>{% endif %}
               {% if r.is_suggestion %}<span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">nur Vorschlag</span>{% endif %}
             </td>
           </tr>

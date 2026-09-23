@@ -14,6 +14,13 @@ SYSTEM_CATEGORY_DEFAULT_NAMES = {
 }
 
 
+# Kategorie-Typ: nur an Oberkategorien gepflegt, Unterkategorien erben ihn (siehe
+# app.services.category_types). Die Systemkategorie "Umbuchung" hat keinen Typ (NULL).
+CATEGORY_TYPE_INCOME = "einnahme"
+CATEGORY_TYPE_EXPENSE = "ausgabe"
+CATEGORY_TYPES = (CATEGORY_TYPE_INCOME, CATEGORY_TYPE_EXPENSE)
+
+
 class Category(SQLModel, table=True):
     """Hierarchische Kategorie (Ober-/Unterkategorie), frei verwaltbar."""
 
@@ -23,6 +30,8 @@ class Category(SQLModel, table=True):
     # Gesetzt nur bei den Systemkategorien (siehe UMBUCHUNG_KEY/BARGELD_KEY) - solche
     # Kategorien sind weder loesch- noch umbenennbar.
     system_key: Optional[str] = Field(default=None, index=True)
+    # "einnahme" / "ausgabe" - nur bei Oberkategorien gesetzt (Unterkategorien erben, Feld bleibt NULL).
+    type: Optional[str] = Field(default=None)
 
     parent: Optional["Category"] = Relationship(
         back_populates="children",

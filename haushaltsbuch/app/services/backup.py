@@ -22,6 +22,9 @@ Datengruppen (auswaehlbar bei Export UND Import): ``accounts``, ``categories``,
 abgelehnten Umbuchungs-Vorschlaegen). ``transactions`` setzt ``accounts`` + ``categories`` voraus,
 ``categorization_rules`` und ``budgets`` setzen ``categories`` voraus.
 
+Kategorien tragen das optionale Feld ``type`` ("einnahme"/"ausgabe"/null, nur an Oberkategorien); fehlt es
+(Backup aus aelterer Version), bestimmt der Import den Typ wie die Datenbank-Migration.
+
 Die Abschnitte ``categorization_rules`` und ``budgets`` sind optional (aeltere Dateien enthalten sie nicht);
 das Format bleibt dadurch abwaertskompatibel (schema_version unveraendert).
 """
@@ -38,10 +41,12 @@ from sqlalchemy import delete, func
 from sqlmodel import Session, select
 
 from app.models import (
+    CATEGORY_TYPES,
     RULE_FIELDS,
     RULE_MODES,
     RULE_OPERATORS,
     SYSTEM_CATEGORY_DEFAULT_NAMES,
+    UMBUCHUNG_KEY,
     Account,
     CategorizationRule,
     Category,
@@ -52,6 +57,7 @@ from app.models import (
     TransactionSplit,
     TransactionType,
 )
+from app.services.category_types import backfill_category_types
 from app.version import get_app_version
 
 BACKUP_FORMAT = "haushaltsbuch-backup"
@@ -121,7 +127,7 @@ ENTITY_FIELDS: dict[str, list[F]] = {
         F("starting_balance", warn_missing=False),
         F("created_at", warn_missing=False),
     ],
-    "categories": [F("name", required=True), F("system_key")],
+    "categories": [F("name", required=True), F("system_key"), F("type", warn_missing=False)],
     "mapping_profiles": [
         F("name", required=True),
         F("date_column", required=True),
@@ -251,6 +257,7 @@ def build_export(session: Session, groups: Iterable[str]) -> tuple[dict, dict]:
                 "name": c.name,
                 "parent": category_ids.get(c.parent_id) if c.parent_id else None,
                 "system_key": c.system_key,
+                "type": c.type,
             }
             for c in rows
         ]
@@ -476,6 +483,12 @@ def _coerce(section: str, name: str, value: Any, label: str, problems: list[str]
         if name == "field" and section == "categorization_rules":
             if value not in RULE_FIELDS:
                 raise ValueError("erlaubt: " + ", ".join(RULE_FIELDS))
+            return value
+        if name == "type" and section == "categories":
+            if value is None:
+                return None
+            if value not in CATEGORY_TYPES:
+                raise ValueError("erlaubt: " + ", ".join(CATEGORY_TYPES))
             return value
         if name == "mode" and section == "categorization_rules":
             if value not in RULE_MODES:
@@ -935,7 +948,12 @@ def execute_import(
                         categories[rec.export_id] = existing
                         reused += 1
                     else:
-                        cat = Category(name=name, parent_id=parent_id)
+                        # Typ nur an Oberkategorien; fehlt er (aelteres Backup), bestimmt ihn der Abschluss
+                        cat = Category(
+                            name=name,
+                            parent_id=parent_id,
+                            type=None if parent_id else rec.values.get("type"),
+                        )
                         session.add(cat)
                         session.flush()
                         categories[rec.export_id] = cat
@@ -951,6 +969,10 @@ def execute_import(
                     if categories[parent_ref].id != target.id:
                         target.parent_id = categories[parent_ref].id
                         session.add(target)
+                # Typ der Systemkategorie (Bargeld); Umbuchung bleibt neutral
+                if rec.values.get("system_key") != UMBUCHUNG_KEY and rec.values.get("type"):
+                    categories[rec.export_id].type = rec.values["type"]
+                    session.add(categories[rec.export_id])
             session.flush()
             report.imported["categories"] = len(recs)
             if reused:
@@ -1095,6 +1117,9 @@ def execute_import(
             report.imported["rejected_transfer_pairs"] = pair_count
 
         current = "Abschluss"
+        if "categories" in selected_set:
+            # Oberkategorien ohne Typ (Backup aus aelterer Version) wie bei der Migration bestimmen
+            backfill_category_types(session, commit=False)
         session.commit()
     except ImportFailed:
         session.rollback()

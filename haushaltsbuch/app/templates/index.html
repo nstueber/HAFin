@@ -26,26 +26,29 @@
          ], granularity, "Zeitraum", stretch=true) }}
     </div>
     {% set transfer_labels = {"all": "Alle Buchungen", "only": "Nur Umbuchungen", "hide": "Ohne Umbuchungen"} %}
+    {# Ein Filter-Icon fuer beide Einstellungen (Umbuchungsfilter + Vorzeitraumsvergleich) statt zwei
+       nebeneinander - beide leben unveraendert nur in der URL (transfers=/compare=, kein localStorage,
+       siehe DEFAULT_TRANSFERS/DEFAULT_COMPARE in dashboard.py), nur die Darstellung ist zusammengefasst. #}
     <div class="relative col-start-2 row-start-1 sm:col-auto sm:row-auto">
       <button
         type="button"
         class="btn-ghost-icon relative"
-        data-dropdown-toggle="#transfer-filter-panel"
+        data-dropdown-toggle="#dashboard-filter-panel"
         aria-haspopup="true"
         aria-expanded="false"
-        aria-label="Umbuchungen filtern{% if transfers != 'all' %} (aktiv: {{ transfer_labels[transfers] }}){% endif %}"
-        title="{{ 'Umbuchungen: ' ~ transfer_labels[transfers] if transfers != 'all' else 'Umbuchungen filtern' }}"
+        aria-label="Filter{% if transfers != 'hide' or compare %} (aktiv){% endif %}"
+        title="Filter"
       >
         {{ funnel("h-5 w-5") }}
-        {% if transfers != "all" %}
+        {% if transfers != "hide" or compare %}
         <span class="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-white dark:ring-gray-900" data-filter-indicator></span>
         {% endif %}
       </button>
       <form
-        id="transfer-filter-panel"
+        id="dashboard-filter-panel"
         method="get"
         action="/"
-        class="hafin-dropdown-panel absolute right-0 z-20 mt-2 hidden w-60 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-800 dark:bg-gray-900"
+        class="hafin-dropdown-panel absolute right-0 z-20 mt-2 hidden w-64 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-800 dark:bg-gray-900"
       >
         <input type="hidden" name="granularity" value="{{ granularity }}" />
         <input type="hidden" name="ref" value="{{ ref }}" />
@@ -64,6 +67,21 @@
           {{ label }}
         </label>
         {% endfor %}
+        <hr class="my-2 border-gray-200 dark:border-gray-800" />
+        <label class="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
+          <input
+            type="checkbox"
+            name="compare"
+            value="1"
+            {% if compare %}checked{% endif %}
+            onchange="this.form.submit()"
+            class="mt-0.5 rounded border-gray-300 text-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-900"
+          />
+          <span>
+            Vorzeitraumsvergleich anzeigen
+            <span class="block text-xs font-normal text-gray-500 dark:text-gray-400">Veränderung je Kategorie ggü. dem vorherigen Zeitraum (nur im Modus „Einfach“).</span>
+          </span>
+        </label>
       </form>
     </div>
   </div>
@@ -129,11 +147,11 @@
   {% endfor %}
 </div>
 
-<div class="card">
+<div class="card" id="category-charts-card">
   <div class="flex flex-wrap items-center justify-between gap-4">
     <h2 class="text-base font-semibold">Kategorien im Zeitraum</h2>
     <div class="flex flex-wrap items-center gap-3">
-      {% if chart_data.labels %}
+      {% if chart_data.expense.labels or chart_data.income.labels %}
       {{ segmented_buttons([
            ("simple", "Einfach", "simple"),
            ("stacked", "Gestapelt nach Unterkategorie", "stacked"),
@@ -143,6 +161,7 @@
         <input type="hidden" name="granularity" value="{{ granularity }}" />
         <input type="hidden" name="ref" value="{{ ref }}" />
         <input type="hidden" name="transfers" value="{{ transfers }}" />
+        {% if compare %}<input type="hidden" name="compare" value="1" />{% endif %}
         <select
           name="account_id"
           data-searchable
@@ -160,96 +179,197 @@
     </div>
   </div>
 
-  {% if chart_data.labels %}
-  <div class="mt-5" style="height: {{ chart_data.labels|length * 40 + 40 }}px;">
-    <canvas id="category-chart"></canvas>
-  </div>
+  {% if chart_data.expense.labels or chart_data.income.labels %}
+  {# Zwei Bereiche nach Kategorie-Typ: Ausgaben (rot/orange) und Einnahmen (gruen); gemeinsamer Darstellungs-Schalter #}
+  {% for kind, heading, empty_text in [
+       ("expense", "Ausgaben nach Kategorie", "Keine Ausgaben im gewählten Zeitraum."),
+       ("income", "Einnahmen nach Kategorie", "Keine Einnahmen im gewählten Zeitraum."),
+     ] %}
+  {% set data = chart_data[kind] %}
+  <section class="mt-6" id="chart-section-{{ kind }}" data-chart-kind="{{ kind }}">
+    <h3 class="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
+      <span class="h-2 w-2 rounded-full {{ 'bg-red-500' if kind == 'expense' else 'bg-green-500' }}" aria-hidden="true"></span>{{ heading }}
+    </h3>
+    {% if data.labels %}
+    <div class="mt-3" style="height: {{ data.labels|length * 40 + 40 }}px;">
+      <canvas id="category-chart-{{ kind }}"></canvas>
+    </div>
+    {% else %}
+    <p class="chart-empty mt-2 text-sm text-gray-500 dark:text-gray-400">{{ empty_text }}</p>
+    {% endif %}
+  </section>
+  {% endfor %}
   <script>
     (function () {
-      var chartData = {{ chart_data|tojson }};
-      var palette = [
-        "#f59e0b", "#8b5cf6", "#ef4444", "#10b981", "#ec4899",
-        "#f97316", "#14b8a6", "#a855f7", "#84cc16", "#eab308"
-      ];
+      var charts = {{ chart_data|tojson }};
+      // Ausgaben: Rot-/Orange-Palette, Einnahmen: Gruen-Palette (Unkategorisiert immer grau)
+      var palettes = {
+        expense: [
+          "#ef4444", "#f97316", "#dc2626", "#fb923c", "#f43f5e",
+          "#ea580c", "#b91c1c", "#fdba74", "#e11d48", "#c2410c"
+        ],
+        income: [
+          "#22c55e", "#10b981", "#16a34a", "#34d399", "#84cc16",
+          "#059669", "#4ade80", "#65a30d", "#14b8a6", "#15803d"
+        ]
+      };
       var isDark = document.documentElement.classList.contains("dark");
       var textColor = isDark ? "#9b9b9b" : "#525252";  // HA: secondary-text-color (dunkel)
       var gridColor = isDark ? "rgba(225,225,225,0.12)" : "rgba(0,0,0,0.06)";  // HA: divider-color
       var currentMode = "simple";
+      var instances = [];
 
-      function simpleColors() {
-        return chartData.simple_amounts.map(function (_, i) {
-          return chartData.simple_uncategorized[i] ? "#a3a3a3" : palette[i % palette.length];
-        });
+      // Vorzeitraumsvergleich: eigener Formatter mit erzwungenem Vorzeichen ("+45,20 €"/"-30,00 €"),
+      // damit ein Anstieg immer sichtbar ein "+" traegt (window.hafinFormatCurrency zeigt keins).
+      var diffAmountFmt = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", signDisplay: "exceptZero" });
+      function diffText(d) {
+        if (d.is_new) return diffAmountFmt.format(d.diff) + " (neu)";
+        var p = Math.round(d.percent);
+        var pctText = p === 0 ? "0 %" : (p > 0 ? "+" + p : p) + " %";
+        return diffAmountFmt.format(d.diff) + " (" + pctText + ")";
+      }
+      // Farblogik nach Kategorie-Typ: bei Ausgaben ist ein Anstieg schlechter (rot), bei Einnahmen besser (gruen).
+      function diffColor(d, kind) {
+        if (d.diff === 0) return isDark ? "#9ca3af" : "#6b7280";
+        var up = d.diff > 0;
+        if (kind === "expense") return up ? "#dc2626" : "#16a34a";
+        return up ? "#16a34a" : "#dc2626";
       }
 
-      function buildDatasets(mode) {
-        if (mode === "stacked") {
-          return chartData.stacked_datasets.map(function (ds, i) {
-            return {
-              label: ds.label,
-              data: ds.data,
-              backgroundColor: palette[i % palette.length],
-              borderRadius: 4,
-              barPercentage: 0.7,
-              url: ds.url,
-            };
+      function createChart(kind) {
+        var chartData = charts[kind];
+        var palette = palettes[kind];
+        var canvas = document.getElementById("category-chart-" + kind);
+        if (!canvas || !chartData.labels.length) return;
+
+        function simpleColors() {
+          return chartData.simple_amounts.map(function (_, i) {
+            return chartData.simple_uncategorized[i] ? "#a3a3a3" : palette[i % palette.length];
           });
         }
-        return [{
-          data: chartData.simple_amounts,
-          backgroundColor: simpleColors(),
-          borderRadius: 4,
-          barPercentage: 0.7,
-          urls: chartData.simple_urls,
-        }];
-      }
 
-      var chart = new Chart(document.getElementById("category-chart"), {
-        type: "bar",
-        data: {
-          labels: chartData.labels,
-          datasets: buildDatasets("simple"),
-        },
-        options: {
-          indexAxis: "y",
-          responsive: true,
-          maintainAspectRatio: false,
-          onClick: function (evt) {
-            var points = chart.getElementsAtEventForMode(evt, "nearest", { intersect: true }, true);
-            if (!points.length) return;
-            var point = points[0];
-            var dataset = chart.data.datasets[point.datasetIndex];
-            var url = currentMode === "stacked" ? dataset.url : dataset.urls[point.index];
-            if (url) {
-              hafinOpenDialog(url, "dashboard-drilldown-dialog", "dashboard-drilldown-content");
-            }
+        function buildDatasets(mode) {
+          if (mode === "stacked") {
+            return chartData.stacked_datasets.map(function (ds, i) {
+              return {
+                label: ds.label,
+                data: ds.data,
+                backgroundColor: palette[i % palette.length],
+                borderRadius: 4,
+                barPercentage: 0.7,
+                url: ds.url,
+              };
+            });
+          }
+          return [{
+            data: chartData.simple_amounts,
+            backgroundColor: simpleColors(),
+            borderRadius: 4,
+            barPercentage: 0.7,
+            urls: chartData.simple_urls,
+          }];
+        }
+
+        // Platz rechts der Balken fuer Betrag (und bei aktivem Vergleich zusaetzlich die Differenz) -
+        // fest anhand des Vorhandenseins von chartData.diffs, damit der Einfach/Gestapelt-Umschalter
+        // (der die Differenz nur im "Einfach"-Modus zeigt) keinen Layout-Sprung verursacht. Auf
+        // schmalen Bildschirmen (Mobil) kleiner, sonst wuerde der reservierte Rand die Kategorie-
+        // Beschriftungen links so weit einengen, dass Chart.js sie abschneidet.
+        var narrow = canvas.parentElement.clientWidth < 480;
+        var labelPadding = chartData.diffs ? (narrow ? 66 : 150) : (narrow ? 46 : 90);
+        var labelFont = narrow ? "600 9px system-ui, sans-serif" : "600 11px system-ui, sans-serif";
+        var diffFont = narrow ? "500 8px system-ui, sans-serif" : "500 10px system-ui, sans-serif";
+
+        var chart = new Chart(canvas, {
+          type: "bar",
+          data: {
+            labels: chartData.labels,
+            datasets: buildDatasets("simple"),
           },
-          onHover: function (evt, elements) {
-            evt.native.target.style.cursor = elements.length ? "pointer" : "default";
-          },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: function (ctx) {
-                  var label = currentMode === "stacked" ? ctx.dataset.label + ": " : "";
-                  return label + window.hafinFormatCurrency(ctx.parsed.x);
+          plugins: [{
+            id: "hafinValueLabels",
+            // Zeichnet Betrag (immer) und Vorzeitraums-Differenz (nur "Einfach" + aktiver Vergleich)
+            // rechts neben jedem Balken. Nimmt dafuer bewusst das JEWEILS LETZTE Dataset: dessen
+            // Balken-Element liegt bei einem gestapelten Chart durch die Stapelung bereits am
+            // Gesamt-Ende (Summe aller Segmente), bei nur einem Dataset (Einfach-Modus) ist es
+            // ohnehin das einzige - so funktioniert dieselbe Logik fuer beide Modi.
+            afterDatasetsDraw: function (c) {
+              var datasets = c.data.datasets;
+              if (!datasets.length) return;
+              var meta = c.getDatasetMeta(datasets.length - 1);
+              var showDiff = currentMode === "simple" && !!chartData.diffs;
+              var ctx = c.ctx;
+              ctx.save();
+              ctx.textBaseline = "middle";
+              ctx.textAlign = "left";
+              meta.data.forEach(function (bar, i) {
+                var x = bar.x + 6;
+                var d = showDiff ? chartData.diffs[i] : null;
+                ctx.font = labelFont;
+                ctx.fillStyle = textColor;
+                ctx.fillText(window.hafinFormatCurrency(chartData.simple_amounts[i]), x, d ? bar.y - 7 : bar.y);
+                if (d) {
+                  ctx.font = diffFont;
+                  ctx.fillStyle = diffColor(d, kind);
+                  ctx.fillText(diffText(d), x, bar.y + 7);
+                }
+              });
+              ctx.restore();
+            },
+          }],
+          options: {
+            indexAxis: "y",
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { right: labelPadding } },
+            onClick: function (evt) {
+              var points = chart.getElementsAtEventForMode(evt, "nearest", { intersect: true }, true);
+              if (!points.length) return;
+              var point = points[0];
+              var dataset = chart.data.datasets[point.datasetIndex];
+              var url = currentMode === "stacked" ? dataset.url : dataset.urls[point.index];
+              if (url) {
+                hafinOpenDialog(url, "dashboard-drilldown-dialog", "dashboard-drilldown-content");
+              }
+            },
+            onHover: function (evt, elements) {
+              evt.native.target.style.cursor = elements.length ? "pointer" : "default";
+            },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function (ctx) {
+                    var label = currentMode === "stacked" ? ctx.dataset.label + ": " : "";
+                    return label + window.hafinFormatCurrency(ctx.parsed.x);
+                  },
                 },
               },
             },
-          },
-          scales: {
-            x: {
-              stacked: false,
-              beginAtZero: true,
-              ticks: { color: textColor, callback: function (v) { return window.hafinFormatNumber(v); } },
-              grid: { color: gridColor },
+            scales: {
+              x: {
+                stacked: false,
+                beginAtZero: true,
+                ticks: { color: textColor, callback: function (v) { return window.hafinFormatNumber(v); } },
+                grid: { color: gridColor },
+              },
+              y: { stacked: false, ticks: { color: textColor }, grid: { display: false } },
             },
-            y: { stacked: false, ticks: { color: textColor }, grid: { display: false } },
           },
-        },
-      });
+        });
 
+        instances.push(function (mode) {
+          chart.data.datasets = buildDatasets(mode);
+          chart.options.scales.x.stacked = mode === "stacked";
+          chart.options.scales.y.stacked = mode === "stacked";
+          chart.update();
+        });
+      }
+
+      createChart("expense");
+      createChart("income");
+
+      // Ein Schalter fuer beide Diagramme
       document.querySelectorAll(".chart-mode-btn").forEach(function (btn) {
         btn.addEventListener("click", function () {
           var mode = btn.getAttribute("data-mode");
@@ -262,10 +382,7 @@
             b.setAttribute("aria-pressed", active ? "true" : "false");
           });
 
-          chart.data.datasets = buildDatasets(mode);
-          chart.options.scales.x.stacked = mode === "stacked";
-          chart.options.scales.y.stacked = mode === "stacked";
-          chart.update();
+          instances.forEach(function (update) { update(mode); });
         });
       });
     })();

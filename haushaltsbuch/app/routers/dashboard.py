@@ -9,6 +9,8 @@ from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models import (
+    CATEGORY_TYPE_EXPENSE,
+    CATEGORY_TYPE_INCOME,
     Account,
     Category,
     CategoryBudget,
@@ -17,6 +19,7 @@ from app.models import (
     TransactionType,
 )
 from app.services.category_tree import category_path
+from app.services.category_types import effective_type
 from app.templating import templates
 
 router = APIRouter(tags=["dashboard"])
@@ -27,6 +30,9 @@ TRANSFER_MODES = ("all", "only", "hide")
 # Der Filterzustand lebt ausschliesslich in der URL (kein localStorage/Cookie) - ein ausdruecklich gewaehlter Wert,
 # auch "all", steht deshalb immer explizit in der URL und wird nie durch den Standard ueberschrieben.
 DEFAULT_TRANSFERS = "hide"
+# Vorzeitraumsvergleich (Balken-Diagramme): wie beim Umbuchungsfilter lebt der Zustand nur in der
+# URL (Checkbox ohne "checked" sendet beim Absenden gar keinen Parameter -> Standard "aus").
+DEFAULT_COMPARE = False
 MONTH_NAMES_DE = [
     "Januar", "Februar", "März", "April", "Mai", "Juni",
     "Juli", "August", "September", "Oktober", "November", "Dezember",
@@ -77,13 +83,19 @@ def _period_label(granularity: str, start: date, end: date) -> str:
 
 
 def _dashboard_url(
-    granularity: str, ref: date, transfers: str, account_id: Optional[int]
+    granularity: str,
+    ref: date,
+    transfers: str,
+    account_id: Optional[int],
+    compare: bool = False,
 ) -> str:
     params = [f"granularity={granularity}", f"ref={ref.isoformat()}"]
     if transfers != DEFAULT_TRANSFERS:
         params.append(f"transfers={transfers}")
     if account_id is not None:
         params.append(f"account_id={account_id}")
+    if compare:
+        params.append("compare=1")
     return "/?" + "&".join(params)
 
 
@@ -201,6 +213,30 @@ def _drilldown_url(
     return "/dashboard/transactions?" + "&".join(params)
 
 
+def _raw_top_sums(entries: list[dict]) -> dict:
+    """Netto-Summe je Oberkategorie (Schluessel wie ``top_category_id``: ``None`` = unkategorisiert),
+    OHNE Vorzeichen-Anpassung an einen Diagrammtyp - Rohwert fuer den Vorzeitraumsvergleich."""
+    sums: dict = defaultdict(float)
+    for e in entries:
+        sums[e["top_category_id"]] += e["amount"]
+    return sums
+
+
+def _period_diff(cur_signed: float, prev_raw: float, sign: int) -> dict:
+    """Veraenderung einer Kategorie ggue. dem Vorzeitraum, im selben Vorzeichen-System wie der
+    Balkenwert (``cur_signed``), damit ein positiver ``diff`` in beiden Diagrammen "mehr von diesem
+    Kategorie-Typ" bedeutet. ``is_new``: Vorzeitraum war (rechnerisch) 0 - Prozent ergibt keinen Sinn
+    ("neu" statt Division durch 0)."""
+    prev_signed = sign * prev_raw
+    diff = cur_signed - prev_signed
+    is_new = abs(prev_signed) < 0.005
+    return {
+        "diff": diff,
+        "percent": None if is_new else diff / prev_signed * 100,
+        "is_new": is_new,
+    }
+
+
 def _category_chart_data(
     entries: list[dict],
     categories_by_id: dict,
@@ -208,80 +244,115 @@ def _category_chart_data(
     ref_date: date,
     transfers: str,
     account_id_int: Optional[int],
+    prev_top_sums: Optional[dict] = None,
 ) -> dict:
-    """Baut die komplette, fuer Chart.js direkt verwendbare Datenstruktur fuer
-    die Kategorie-Aufschluesselung - sowohl fuer den einfachen (ein Balken je
-    Oberkategorie) als auch den gestapelten Modus (ein Segment je tatsaechlich
-    zugewiesener Unterkategorie), damit beide Modi client-seitig ohne erneuten
-    Server-Request umgeschaltet werden koennen.
+    """Baut die fuer Chart.js direkt verwendbaren Datenstrukturen der Kategorie-Aufschluesselung -
+    getrennt nach Kategorie-Typ: ``{"expense": ..., "income": ...}`` (Ausgaben- bzw. Einnahmen-Diagramm).
+
+    Jedes Diagramm enthaelt sowohl den einfachen (ein Balken je Oberkategorie) als auch den gestapelten
+    Modus (ein Segment je tatsaechlich zugewiesener Unterkategorie), damit beide Modi client-seitig ohne
+    erneuten Server-Request umgeschaltet werden koennen.
+
+    Die Zuordnung zum Diagramm richtet sich nach dem Typ der Oberkategorie (nicht nach dem Namen):
+    Typ "ausgabe" -> Ausgaben (Balken = -Summe), "einnahme" -> Einnahmen (Balken = +Summe). Ohne Typ
+    (Unkategorisiert, Systemkategorie Umbuchung) entscheidet das Vorzeichen der Summe wie bisher. Die
+    Summe ist netto: Rueckerstattungen mindern eine Ausgabe. Netto-Summen mit umgekehrtem Vorzeichen
+    (Ausgaben-Kategorie insgesamt im Plus) sowie gegenlaeufige Segmente erscheinen nicht im Diagramm
+    (Balken koennen nicht negativ sein) - die Buchungen bleiben im Detail-Drilldown und in der Liste sichtbar.
+
+    ``prev_top_sums``: Rohsummen (wie ``_raw_top_sums``) desselben Zeitraum-Ausschnitts im direkt
+    vorherigen Zeitraum (nur wenn der Vorzeitraumsvergleich aktiv ist) - ``None`` laesst ``diffs``
+    bei beiden Diagrammen ``None`` (kein zusaetzlicher Query, wenn der Vergleich ausgeschaltet ist).
     """
-    top_sums: dict = defaultdict(float)
+    top_sums = _raw_top_sums(entries)
     sub_sums: dict = defaultdict(float)  # (top_id, actual_category_id) -> amount
     for e in entries:
-        top_sums[e["top_category_id"]] += e["amount"]
         sub_sums[(e["top_category_id"], e["category_id"])] += e["amount"]
 
-    top_items = []
-    for top_id, amount in top_sums.items():
-        if amount == 0:
-            continue
-        label = "Unkategorisiert" if top_id is None else categories_by_id[top_id].name
-        key = "uncategorized" if top_id is None else str(top_id)
-        top_items.append({"top_id": top_id, "label": label, "amount": abs(amount), "uncategorized": top_id is None, "key": key})
-    top_items.sort(key=lambda i: i["amount"], reverse=True)
+    def chart_for(kind: str) -> dict:
+        # Vorzeichen, mit dem eine Summe in diesem Diagramm positiv wird
+        sign = -1 if kind == CATEGORY_TYPE_EXPENSE else 1
 
-    labels = [i["label"] for i in top_items]
-    simple_amounts = [i["amount"] for i in top_items]
-    simple_uncategorized = [i["uncategorized"] for i in top_items]
-    simple_urls = [
-        _drilldown_url(granularity, ref_date, transfers, account_id_int, "category", i["key"])
-        for i in top_items
-    ]
+        def belongs(top_id: Optional[int], total: float) -> bool:
+            category_type = effective_type(categories_by_id.get(top_id), categories_by_id)
+            if category_type is None:  # neutral: Vorzeichen der Summe entscheidet
+                return sign * total > 0
+            return category_type == kind
 
-    # Segmente je Oberkategorie einsammeln (fuer den gestapelten Modus).
-    segments_by_top: dict = defaultdict(list)
-    for (top_id, actual_id), amount in sub_sums.items():
-        if amount == 0:
-            continue
-        if actual_id == top_id:
-            label = "Unkategorisiert" if top_id is None else "Allgemein"
-        else:
-            label = categories_by_id[actual_id].name if actual_id in categories_by_id else "?"
-        segments_by_top[top_id].append({"category_id": actual_id, "label": label, "amount": abs(amount)})
-    for segs in segments_by_top.values():
-        segs.sort(key=lambda s: s["amount"], reverse=True)
-
-    # Jede Oberkategorie kann eine andere Anzahl/Art von Unterkategorien haben -
-    # fuer Chart.js' gestapelte Balken brauchen wir pro tatsaechlicher Kategorie
-    # EIN Dataset ueber ALLE Balken hinweg (0 bei jeder anderen Oberkategorie).
-    stacked_datasets = []
-    for index, top_item in enumerate(top_items):
-        for seg in segments_by_top.get(top_item["top_id"], []):
-            data = [0] * len(top_items)
-            data[index] = seg["amount"]
-            stacked_datasets.append(
+        top_items = []
+        for top_id, total in top_sums.items():
+            value = sign * total
+            if value <= 0 or not belongs(top_id, total):
+                continue
+            label = "Unkategorisiert" if top_id is None else categories_by_id[top_id].name
+            key = "uncategorized" if top_id is None else str(top_id)
+            diff = (
+                _period_diff(value, prev_top_sums.get(top_id, 0.0), sign)
+                if prev_top_sums is not None
+                else None
+            )
+            top_items.append(
                 {
-                    "label": seg["label"],
-                    "data": data,
-                    "url": _drilldown_url(
-                        granularity,
-                        ref_date,
-                        transfers,
-                        account_id_int,
-                        "category",
-                        "uncategorized" if seg["category_id"] is None else str(seg["category_id"]),
-                        exact=True,
-                    ),
+                    "top_id": top_id,
+                    "label": label,
+                    "amount": value,
+                    "uncategorized": top_id is None,
+                    "key": key,
+                    "diff": diff,
                 }
             )
+        top_items.sort(key=lambda i: i["amount"], reverse=True)
 
-    return {
-        "labels": labels,
-        "simple_amounts": simple_amounts,
-        "simple_uncategorized": simple_uncategorized,
-        "simple_urls": simple_urls,
-        "stacked_datasets": stacked_datasets,
-    }
+        # Segmente je Oberkategorie einsammeln (fuer den gestapelten Modus).
+        segments_by_top: dict = defaultdict(list)
+        for (top_id, actual_id), amount in sub_sums.items():
+            if sign * amount <= 0:
+                continue
+            if actual_id == top_id:
+                label = "Unkategorisiert" if top_id is None else "Allgemein"
+            else:
+                label = categories_by_id[actual_id].name if actual_id in categories_by_id else "?"
+            segments_by_top[top_id].append({"category_id": actual_id, "label": label, "amount": sign * amount})
+        for segs in segments_by_top.values():
+            segs.sort(key=lambda seg: seg["amount"], reverse=True)
+
+        # Jede Oberkategorie kann eine andere Anzahl/Art von Unterkategorien haben -
+        # fuer Chart.js' gestapelte Balken brauchen wir pro tatsaechlicher Kategorie
+        # EIN Dataset ueber ALLE Balken hinweg (0 bei jeder anderen Oberkategorie).
+        stacked_datasets = []
+        for index, top_item in enumerate(top_items):
+            for seg in segments_by_top.get(top_item["top_id"], []):
+                data = [0] * len(top_items)
+                data[index] = seg["amount"]
+                stacked_datasets.append(
+                    {
+                        "label": seg["label"],
+                        "data": data,
+                        "url": _drilldown_url(
+                            granularity,
+                            ref_date,
+                            transfers,
+                            account_id_int,
+                            "category",
+                            "uncategorized" if seg["category_id"] is None else str(seg["category_id"]),
+                            exact=True,
+                        ),
+                    }
+                )
+
+        return {
+            "labels": [i["label"] for i in top_items],
+            "simple_amounts": [i["amount"] for i in top_items],
+            "simple_uncategorized": [i["uncategorized"] for i in top_items],
+            "simple_urls": [
+                _drilldown_url(granularity, ref_date, transfers, account_id_int, "category", i["key"])
+                for i in top_items
+            ],
+            "diffs": [i["diff"] for i in top_items] if prev_top_sums is not None else None,
+            "stacked_datasets": stacked_datasets,
+        }
+
+    return {"expense": chart_for(CATEGORY_TYPE_EXPENSE), "income": chart_for(CATEGORY_TYPE_INCOME)}
 
 
 # Schwellwerte der Budget-Farbcodierung (Anteil des Budgets in Prozent)
@@ -373,12 +444,16 @@ def dashboard(
     ref: Optional[str] = None,
     transfers: str = DEFAULT_TRANSFERS,
     account_id: str = "",
+    compare: str = "",
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     if granularity not in GRANULARITIES:
         granularity = "month"
     if transfers not in TRANSFER_MODES:
         transfers = DEFAULT_TRANSFERS
+    # Wie granularity/transfers: ein Rohstring statt bool, damit ein ungueltiger/handgeschriebener
+    # Wert nicht mit 422 abgewiesen wird, sondern (wie ueberall sonst) still auf den Standard faellt.
+    compare_flag = compare == "1"
     # Das Konto-Filter-<select> submitted bei "Alle Konten" einen leeren String
     # (nicht abwesend) - "" laesst sich nicht direkt in int parsen.
     account_id_int = int(account_id) if account_id else None
@@ -422,12 +497,34 @@ def dashboard(
     ]
     splits_by_txn_id = _splits_by_transaction(session, [t.id for t in breakdown_txns])
     breakdown_entries = _category_entries(breakdown_txns, categories_by_id, splits_by_txn_id)
-    chart_data = _category_chart_data(
-        breakdown_entries, categories_by_id, granularity, ref_date, transfers, account_id_int
-    )
 
     prev_ref = _shift_ref(granularity, start, -1)
     next_ref = _shift_ref(granularity, start, 1)
+
+    # Vorzeitraumsvergleich: derselbe direkt vorherige Zeitraum wie beim "<"-Navigationspfeil
+    # (identische _shift_ref()/_period_bounds()-Berechnung - Monats-/Jahresgrenzen also garantiert
+    # konsistent mit der Navigation, keine eigene Datumsarithmetik). Nur bei aktivem Vergleich
+    # geladen, um den zusaetzlichen Query im Normalfall zu vermeiden.
+    prev_top_sums = None
+    if compare_flag:
+        prev_start, prev_end = _period_bounds(granularity, prev_ref)
+        prev_txns = _period_transactions(session, prev_start, prev_end, transfers)
+        prev_breakdown_txns = [
+            t for t in prev_txns if account_id_int is None or t.account_id == account_id_int
+        ]
+        prev_splits_by_txn_id = _splits_by_transaction(session, [t.id for t in prev_breakdown_txns])
+        prev_entries = _category_entries(prev_breakdown_txns, categories_by_id, prev_splits_by_txn_id)
+        prev_top_sums = _raw_top_sums(prev_entries)
+
+    chart_data = _category_chart_data(
+        breakdown_entries,
+        categories_by_id,
+        granularity,
+        ref_date,
+        transfers,
+        account_id_int,
+        prev_top_sums,
+    )
 
     # Budgets sind monatliche Werte: in der Monatsansicht direkt, in der Jahresansicht x 12; bei Tag/Woche
     # gibt es keine sinnvolle Umrechnung (das Template blendet den Bereich dann aus)
@@ -446,11 +543,12 @@ def dashboard(
             "granularity": granularity,
             "period_label": _period_label(granularity, start, end),
             "url_granularity": {
-                g: _dashboard_url(g, ref_date, transfers, account_id_int) for g in GRANULARITIES
+                g: _dashboard_url(g, ref_date, transfers, account_id_int, compare_flag) for g in GRANULARITIES
             },
-            "url_prev": _dashboard_url(granularity, prev_ref, transfers, account_id_int),
-            "url_next": _dashboard_url(granularity, next_ref, transfers, account_id_int),
+            "url_prev": _dashboard_url(granularity, prev_ref, transfers, account_id_int, compare_flag),
+            "url_next": _dashboard_url(granularity, next_ref, transfers, account_id_int, compare_flag),
             "transfers": transfers,
+            "compare": compare_flag,
             "budget_items": budget_items,
             "total_tile": total_tile,
             "account_tiles": account_tiles,

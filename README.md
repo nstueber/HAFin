@@ -12,7 +12,17 @@ Docker/uvicorn.
 > (Home-Assistant-App). Alle Pfade wie `app/...`, `Dockerfile` oder `requirements.txt` in
 > diesem README beziehen sich auf `haushaltsbuch/` (also `haushaltsbuch/app/...`). Im
 > Repo-Root liegen nur `repository.yaml`, `docker-compose.yml`, `.devcontainer/`,
-> `.github/` und dieses README.
+> `.github/`, `docs/` und dieses README.
+
+## Screenshots
+
+Übersicht (Dashboard) und Buchungsliste - mit frei erfundenen Testdaten (Konten, Kategorien
+und Buchungen), keine echten Finanzdaten:
+
+<p>
+  <img src="docs/screenshots/dashboard.png" alt="Übersicht/Dashboard mit Kennzahlen und Kategorie-Diagrammen" width="49%" />
+  <img src="docs/screenshots/buchungen.png" alt="Buchungsliste mit Kategorie-Zuweisung" width="49%" />
+</p>
 
 ## Home Assistant App (Supervisor-Add-on)
 
@@ -98,7 +108,7 @@ haushaltsbuch/                die Home-Assistant-App
   app/
     models/       SQLModel-Datenmodelle (Konten, Kategorien, Mapping-Profile, Transaktionen)
     routers/      accounts, transactions, categories, categorization_rules, budgets, mapping_profiles, imports (CSV-Import), backup, settings
-    services/     CSV-Erkennungslogik + Parsing, Backup (Export/Import/Reset), Kategorisierungsregeln, Kategorienbaum
+    services/     CSV-Erkennungslogik + Parsing, Backup (Export/Import/Reset), Kategorisierungsregeln, Kategorienbaum, Kategorie-Typ
     templates/    Jinja2-Templates (inkl. _icons.html mit Heroicons-SVG-Makros)
     static/       JS (htmx, Theme-Toggle), CSS (input.css = Quelle, app.css = generiert)
     database.py   DB-Engine & Session, leichte Auto-Migration für neue Spalten
@@ -273,9 +283,39 @@ mit den konkreten Konsequenzen gezeigt:
   Kategorie mit dem Default-Namen samt aller bereits zugeordneten Buchungen -
   keine Duplikate). In der Kategorienliste tragen sie ein kleines "System"-Badge.
 
+**Kategorie-Typ (Einnahme/Ausgabe):** jede **Oberkategorie** hat einen Typ `einnahme` oder `ausgabe`
+(`Category.type`, Konstanten `CATEGORY_TYPES` in `app/models/category.py`). Unterkategorien haben **kein eigenes Feld**
+(Spalte bleibt `NULL`) - ihr Typ ist zur Laufzeit der ihrer Oberkategorie (`effective_type()` in
+`app/services/category_types.py`); ein Typwechsel an der Oberkategorie gilt damit sofort für alle Unterkategorien. Die
+Systemkategorie „Umbuchung" hat keinen Typ (neutral, Sonderfall wie bisher; auch ein zufällig gesetzter Wert wird
+ignoriert), „Bargeld" ist eine normale typisierte Kategorie (Migration/Standard: Ausgabe).
+- *Verwaltung:* „Neue Kategorie(n)" hat pro Zeile ein Typ-Select (Standard „Ausgabe"); wählt man eine Oberkategorie,
+  wird das Select durch „Geerbt: …" ersetzt (bleibt aber im DOM/`hidden` und wird mitgesendet, damit die
+  Name/Oberkategorie/Typ-Listen im Request zeilengleich bleiben). Das Bearbeiten-Formular zeigt bei Oberkategorien ein
+  Segmented-Control (Radio-Variante `segmented_radios` in `_segmented.html`, gefärbt per `:has(input:checked)`), bei
+  Unterkategorien den geerbten Typ (nicht editierbar; wechselt live mit der gewählten Oberkategorie). Die Liste
+  kennzeichnet Oberkategorien dezent mit Farbpunkt + Label (grün = Einnahme, rot = Ausgabe).
+- *Typ-Übergänge:* Unterkategorie → Oberkategorie übernimmt den gewählten (sonst bisherigen geerbten) Typ; Oberkategorie
+  → Unterkategorie leert `type`; beim Löschen einer Oberkategorie behalten ihre Unterkategorien den bisher geerbten
+  Typ. Ungültige/fehlende Werte fallen auf „ausgabe" zurück (Server-seitig, auch bei direkten Requests).
+- *Migration (einmalig, idempotent):* `backfill_category_types()` läuft nach `init_db()`/`ensure_system_categories()`
+  beim App-Start (`categories.backfill_types()`), **ohne Alembic** - das Projekt hat keins, die neue Spalte legt
+  `_add_missing_columns()` an. Für jede Oberkategorie **ohne** Typ zählt sie die Vorzeichen der zugewiesenen Buchungen
+  (Buchungen der Oberkategorie und aller Unterkategorien plus Bargeld-Aufteilungen; Betrag 0 zählt nicht):
+  überwiegend positiv → `einnahme`, überwiegend negativ → `ausgabe` (Mehrheit nach **Anzahl**, bei Gleichstand nach
+  Summe), ohne jede Buchung → `ausgabe`. Bereits gesetzte Typen werden nie überschrieben, nichts wird gelöscht; das
+  Ergebnis steht als Zeile „Kategorie-Typen bestimmt: …" im App-Log.
+- *Vorzeichen-Hinweis (nur Hinweis, keine Sperre):* passt das Vorzeichen des Buchungsbetrags nicht zum Typ der
+  zugewiesenen Kategorie (`sign_mismatch_hint()`), zeigt die Buchungszeile ein kleines Warn-Icon vor dem Betrag mit
+  Tooltip „Ungewöhnlich: positiver Betrag in einer Ausgaben-Kategorie" bzw. „…negativer Betrag in einer
+  Einnahmen-Kategorie". Der Hinweis wird beim Rendern der Zeile berechnet und gilt damit für **jeden** Weg der
+  Zuordnung: manuell, Massenzuweisung, Regel (auch die rückwirkende Vorschau zeigt ihn je Treffer; das
+  CSV-Import-Ergebnis zählt „n mit ungewöhnlichem Vorzeichen"). Die Zuweisung bleibt immer möglich (Rückerstattungen,
+  Korrekturen, Bargeld-Splits); Umbuchungen/Unkategorisierte lösen nie einen Hinweis aus.
+
 **Export/Import** (JSON, `/categories/export` bzw. `/categories/import`):
 Export bildet die Ober-/Unterkategorie-Hierarchie 1:1 ab
-(`[{"name": "Auto", "children": ["Ladekosten", ...]}, ...]`). Import gleicht
+(`[{"name": "Auto", "type": "ausgabe", "children": ["Ladekosten", ...]}, ...]`; fehlt `type` beim Import → „ausgabe"). Import gleicht
 Namen case-insensitiv gegen vorhandene Kategorien ab (Unterkategorien nur
 innerhalb derselben, ebenfalls abgeglichenen Oberkategorie) - Treffer werden
 übersprungen, alles andere neu angelegt; am Ende steht eine kurze
@@ -534,6 +574,11 @@ Buchungen) → "In leere Datenbank importieren" (Ersetzen ausgegraut mit Hinweis
 (mit sofort sichtbarem `LÖSCHEN`-Feld; "In leere Datenbank" ausgegraut). Nur die Oberfläche erzwingt das; der Server lässt
 "ersetzen" auf leerer DB weiterhin zu (harmlos) und lehnt "leer" auf gefüllter DB ab.
 
+**Kategorie-Typ im Backup:** Kategorien tragen das optionale Feld `type` (`einnahme`/`ausgabe`/`null`; schema_version
+bleibt 1). Ein ungültiger Wert wird in der Prüfung als Problem gemeldet. Fehlt das Feld (Backup aus ≤ 0.3.x), bestimmt
+der Import den Typ aller Oberkategorien ohne Typ am Ende - in derselben Transaktion - wie die Migration
+(`backfill_category_types(commit=False)`, Vorzeichen-Mehrheit der importierten Buchungen).
+
 **Systemkategorien** werden beim Import nie neu angelegt, sondern über `system_key` mit den vorhandenen
 verknüpft (`_system_category()` - bewusst eine Variante OHNE Commit, siehe Transaktion); auch ihre
 Oberkategorie aus dem Backup wird übernommen (in echten Daten hängt "Bargeld" unter einer Oberkategorie).
@@ -746,15 +791,21 @@ berechnet (z.B. Monat "September 2026" → Woche zeigt die Woche, die der 1.
 September enthält). Die Granularität wird als **Segmented-Control** dargestellt
 (Komponente `templates/_segmented.html` + `.segmented`/`.segmented-item` in `input.css`: eine durchgehende Pille,
 nur die aktive Option ist HA-blau hinterlegt, keine Trennlinien; mobil über die volle Breite). Der 3-Zustands-
-Umbuchungsfilter (Alle Buchungen/Nur Umbuchungen/Ohne Umbuchungen) ist ein Trichter-Icon-Button mit Dropdown-Panel
-(dieselbe `data-dropdown-toggle`-Komponente wie das "Ansicht"-Menü der Buchungsliste; Radios in einem GET-Formular
-mit versteckten `granularity`/`ref`/`account_id`) und zeigt einen farbigen Punkt, wenn er von "Alle" abweicht. Er wirkt
-auf alle Kennzahlen unten. **Standard: "Ohne Umbuchungen"** (`DEFAULT_TRANSFERS` in `dashboard.py`), wenn die URL keinen
-`transfers`-Parameter hat (erstes Laden, Menü "Übersicht"). Der Filterzustand lebt ausschließlich in der URL (kein localStorage/
-Cookie): eine ausdrückliche Wahl - auch `transfers=all` - steht immer explizit in der URL, wird von allen Vor/Zurück-/Zeitraum-/
-Konto-Links mitgeführt (`_dashboard_url` lässt nur den Standardwert weg) und nie durch den Standard überschrieben; ungültige Werte
-fallen auf den Standard. Der Punkt am Filter-Icon erscheint bei jedem Wert außer "Alle" - also im Standardzustand (Hinweis: es wird
-gefiltert). Die Buchungsliste behält ihren eigenen Standard "Alle". Mobil sitzt das Filter-Icon neben dem Titel, das Segmented-Control darunter.
+Umbuchungsfilter (Alle Buchungen/Nur Umbuchungen/Ohne Umbuchungen) UND der Vorzeitraumsvergleich (siehe unten) teilen
+sich **ein** Trichter-Icon-Button mit **einem** Dropdown-Panel (`#dashboard-filter-panel`, dieselbe
+`data-dropdown-toggle`-Komponente wie das "Ansicht"-Menü der Buchungsliste; Radios + Checkbox in EINEM GET-Formular
+mit versteckten `granularity`/`ref`/`account_id` - ein Submit sendet deshalb immer den aktuell gewählten
+Umbuchungsfilter mit, auch wenn nur die Checkbox ausgelöst hat). Frühere Version hatte dafür zwei separate Icons
+nebeneinander; zusammengelegt, damit die Zeitraumsleiste nicht mit Icons vollläuft. Der farbige Punkt am
+gemeinsamen Icon erscheint, sobald **mindestens eine** der beiden Einstellungen vom jeweiligen Standard abweicht
+(Umbuchungsfilter ≠ "Ohne Umbuchungen" **oder** Vergleich = an) - anders als man vom Wortsinn erwarten könnte, ist
+"Ohne Umbuchungen" hier die neutrale Baseline für den Punkt, nicht "Alle Buchungen". Er wirkt auf alle Kennzahlen
+unten. **Standard des Umbuchungsfilters: "Ohne Umbuchungen"** (`DEFAULT_TRANSFERS` in `dashboard.py`), wenn die URL
+keinen `transfers`-Parameter hat (erstes Laden, Menü "Übersicht"). Der Filterzustand lebt ausschließlich in der URL
+(kein localStorage/Cookie): eine ausdrückliche Wahl - auch `transfers=all` - steht immer explizit in der URL, wird
+von allen Vor/Zurück-/Zeitraum-/Konto-Links mitgeführt (`_dashboard_url` lässt nur den Standardwert weg) und nie
+durch den Standard überschrieben; ungültige Werte fallen auf den Standard. Die Buchungsliste behält ihren eigenen
+Standard "Alle". Mobil sitzt das Filter-Icon neben dem Titel, das Segmented-Control darunter.
 
 **Budgets (Zeiträume "Monat" und "Jahr"):** Karte "Budgets" unter dem Kategorie-Diagramm (`_budget_items()` im
 Router). Pro Kategorie mit Budget (`/budgets`, Modell `CategoryBudget`, ein Betrag je Ober- ODER Unterkategorie) ein
@@ -836,6 +887,47 @@ einem "Split"-Badge und dem tatsächlichen Split-Anteil als Betrag (nicht dem
 vollen Buchungsbetrag). Die Einnahmen-/Ausgaben-/Netto-Kacheln sind davon
 komplett unberührt - sie summieren immer den echten, unveränderten
 Buchungsbetrag, unabhängig von etwaigen Splits.
+
+**Kategorien nach Typ getrennt (Ausgaben/Einnahmen):** der Bereich „Kategorien im Zeitraum" besteht aus zwei
+Diagrammen, „Ausgaben nach Kategorie" (Oberkategorien mit Typ `ausgabe`, Rot-/Orange-Palette) und „Einnahmen nach
+Kategorie" (Typ `einnahme`, Grün-Palette), jeweils absteigend nach Betrag. Die Zuordnung folgt dem **Typ der
+Oberkategorie, nie dem Namen**. `_category_chart_data()` liefert dafür `{"expense": …, "income": …}` (jeweils dieselbe
+Struktur wie zuvor: `labels`, `simple_amounts`, `stacked_datasets`, …), das Template rendert zwei Canvas
+(`#category-chart-expense` / `#category-chart-income`). Der Balkenwert ist die **Netto-Summe** mit dem Vorzeichen des
+Typs (Ausgabe: −Summe, Einnahme: +Summe), Rückerstattungen mindern also eine Ausgabe. Kategorien, deren Netto-Summe
+das „falsche" Vorzeichen hat (z. B. eine Ausgaben-Kategorie insgesamt im Plus), und gegenläufige Unterkategorie-
+Segmente erscheinen im Diagramm nicht (ein Balken kann nicht negativ sein); die Buchungen bleiben in Liste und
+Drilldown sichtbar. **Ohne Typ** (Unkategorisiert, Systemkategorie Umbuchung mit Filter „alle/nur Umbuchungen")
+entscheidet wie bisher das Vorzeichen der Summe, in welchem Diagramm der Balken landet. Der Umschalter „Einfach/
+Gestapelt" und der Konto-Filter gelten für beide Diagramme (ein Umschalter steuert beide Chart-Instanzen); hat eine
+Gruppe im Zeitraum keine Werte, steht an ihrer Stelle ein Platzhaltertext („Keine Ausgaben/Einnahmen im gewählten
+Zeitraum."), ohne jede Buchung der bisherige Gesamt-Hinweis.
+
+**Beträge im Balken + Vorzeitraumsvergleich:** ein clientseitiges Chart.js-Plugin (`hafinValueLabels`,
+`afterDatasetsDraw`) zeichnet rechts neben jedem Balken den Betrag (`window.hafinFormatCurrency`) - im
+„Einfach"-Modus je Oberkategorie, im „Gestapelt"-Modus nur den Gesamtwert. Es liest dafür bewusst das **letzte**
+Dataset: dessen Balken-Element liegt bei gestapelten Balken durch die Stapelung bereits am Summen-Ende, bei nur
+einem Dataset (Einfach-Modus) ist es ohnehin das einzige - dieselbe Logik funktioniert dadurch für beide Modi ohne
+Fallunterscheidung. Der dafür nötige freie Raum kommt aus `layout.padding.right` (fest je nachdem, ob Diffs
+vorhanden sind, damit der Modus-Umschalter keinen Layout-Sprung verursacht) - auf schmalen Bildschirmen (< 480px
+Canvas-Breite) kleiner und mit kleinerer Schrift, sonst schneidet Chart.js die Kategorie-Beschriftungen links ab,
+weil ihnen zu wenig Platz bleibt.
+
+Optional (Checkbox im selben Filter-Menü wie der Umbuchungsfilter, `#dashboard-filter-panel`, Standard aus,
+Zustand wie der Umbuchungsfilter nur in der URL über `compare=1`) zeigt eine zweite Zeile je Balken die Veränderung
+ggü. dem **direkt vorherigen
+Zeitraum derselben Auflösung** - **nur im „Einfach"-Modus** (in der Gestapelt-Ansicht ausgeblendet, Balken-Betrag
+bleibt). Der Vorzeitraum ist bewusst `_shift_ref()` + `_period_bounds()` - **dieselben Funktionen wie die
+Zurück/Vor-Navigation** -, keine eigene Datumsarithmetik: bei „Monat" landet man damit automatisch beim Vormonat
+(inkl. Jahreswechsel, z.B. Januar → Dezember des Vorjahres über `_add_months()`s Divmod-Rechnung), bei „Jahr" beim
+Vorjahr. Serverseitig liefert `_raw_top_sums()` die Netto-Summe je Oberkategorie ohne Vorzeichen-Anpassung; `
+_category_chart_data()` bekommt sie nur, wenn der Vergleich aktiv ist (sonst kein zusätzlicher Query) und baut daraus
+mit `_period_diff()` pro Kategorie `{"diff": …, "percent": …, "is_new": …}` im selben Vorzeichen-System wie der
+Balkenwert (ein positiver `diff` bedeutet in beiden Diagrammen "mehr von diesem Kategorie-Typ"). War der Vorzeitraum
+(rechnerisch) 0, ersetzt `is_new` den Prozentwert durch "neu" (Division durch 0 vermieden) - Format und Farbe
+übernimmt das Chart.js-Plugin: `Intl.NumberFormat` mit `signDisplay: "exceptZero"` erzwingt das Vorzeichen
+("+45,20 €"), die Farbe folgt dem Kategorie-Typ (Ausgabe: Anstieg rot/Rückgang grün, Einnahme umgekehrt, Diff 0
+neutral grau).
 
 **Gestapelter Chart-Modus (Unterkategorien):** ein Umschalter über dem Chart
 ("Einfach" / "Gestapelt nach Unterkategorie") wechselt zwischen einem

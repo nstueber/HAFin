@@ -7,6 +7,15 @@
 >
   <span class="{{ 'text-sm text-gray-700 dark:text-gray-300' if indent else 'font-medium text-gray-900 dark:text-gray-100' }}">
     {{ cat.name }}
+    {% if not indent and cat.type %}
+    <span
+      class="category-type ml-2 inline-flex items-center gap-1 text-[11px] font-normal {{ 'text-green-600 dark:text-green-400' if cat.type == 'einnahme' else 'text-red-600 dark:text-red-400' }}"
+      data-type="{{ cat.type }}"
+      title="{{ type_labels[cat.type] }}-Kategorie - Unterkategorien erben diesen Typ"
+    >
+      <span class="h-1.5 w-1.5 rounded-full {{ 'bg-green-500' if cat.type == 'einnahme' else 'bg-red-500' }}"></span>{{ type_labels[cat.type] }}
+    </span>
+    {% endif %}
     {% if cat.system_key %}
     <span class="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:bg-gray-800 dark:text-gray-400" title="Systemkategorie, nicht änderbar">System</span>
     {% endif %}

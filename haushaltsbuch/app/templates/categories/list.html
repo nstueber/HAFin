@@ -45,9 +45,18 @@
           <select name="parent_id" class="form-input">
             <option value="">– keine (Oberkategorie) –</option>
             {% for cat in top_level %}
-            <option value="{{ cat.id }}">{{ cat.name }}</option>
+            <option value="{{ cat.id }}" data-type-label="{{ type_labels[cat.type] if cat.type else '–' }}">{{ cat.name }}</option>
             {% endfor %}
           </select>
+        </div>
+        <div class="w-36 shrink-0">
+          <label class="form-label">Typ</label>
+          {# Unterkategorien erben den Typ: das Select bleibt (hidden, wird trotzdem gesendet), sichtbar ist dann der geerbte Typ #}
+          <select name="type" class="form-input new-category-type" aria-label="Typ der Oberkategorie">
+            <option value="ausgabe">Ausgabe</option>
+            <option value="einnahme">Einnahme</option>
+          </select>
+          <p class="new-category-inherited hidden py-2 text-sm text-gray-500 dark:text-gray-400" title="Geerbt von der Oberkategorie"></p>
         </div>
         <button type="button" class="btn-ghost-icon new-category-add-row" aria-label="Weitere Zeile hinzufügen" title="Weitere Zeile hinzufügen">
           {{ plus() }}
@@ -109,12 +118,26 @@
       });
     }
 
+    function syncType(row) {
+      var parent = row.querySelector('select[name="parent_id"]');
+      var typeSelect = row.querySelector(".new-category-type");
+      var inherited = row.querySelector(".new-category-inherited");
+      var hasParent = !!parent.value;
+      typeSelect.hidden = hasParent;
+      inherited.classList.toggle("hidden", !hasParent);
+      inherited.textContent = hasParent
+        ? "Geerbt: " + parent.options[parent.selectedIndex].getAttribute("data-type-label")
+        : "";
+    }
+
     function wireRow(row) {
+      row.querySelector('select[name="parent_id"]').addEventListener("change", function () { syncType(row); });
       row.querySelector(".new-category-add-row").addEventListener("click", function () {
         var clone = template.cloneNode(true);
         clone.querySelectorAll("input").forEach(function (input) { input.value = ""; });
         clone.querySelectorAll("select").forEach(function (select) { select.selectedIndex = 0; });
         wireRow(clone);
+        syncType(clone);
         container.appendChild(clone);
         updateRemoveButtons();
       });

@@ -23,9 +23,20 @@ wird in der App selbst eingestellt.
    Kodierung, Datumsformat und Spaltenzuordnung werden erkannt und lassen sich prüfen.
 3. **Import** → Konto und Profil wählen, CSV hochladen. Bereits vorhandene Buchungen werden als
    Duplikate übersprungen (übersprungene Zeilen lassen sich bei Bedarf trotzdem importieren).
-4. **Buchungen** → Kategorien zuweisen, Umbuchungen bestätigen, Bargeld aufteilen.
-5. **Übersicht** → Kennzahlen und Kategorie-Diagramm; ein Klick auf eine Zahl oder einen Balken
-   zeigt die zugrunde liegenden Buchungen.
+4. **Buchungen** → Kategorien zuweisen, Umbuchungen bestätigen, Bargeld aufteilen. Passt das Vorzeichen einer
+   Buchung nicht zum Typ ihrer Kategorie (siehe unten), erscheint ein kleines Warn-Icon – die Zuweisung bleibt möglich.
+5. **Übersicht** → Kennzahlen und Kategorie-Diagramme („Ausgaben nach Kategorie“ und „Einnahmen nach Kategorie“) mit
+   dem Betrag am Balkenende; ein Klick auf eine Zahl oder einen Balken zeigt die zugrunde liegenden Buchungen. Über
+   im Filter-Menü (gleiches Symbol wie der Umbuchungsfilter) lässt sich ein Vorzeitraumsvergleich einblenden (z. B. Vormonat).
+
+### Kategorie-Typ (Einnahme/Ausgabe)
+
+Jede **Oberkategorie** hat einen Typ – **Einnahme** oder **Ausgabe** (Einstellungen → Kategorien, beim Anlegen und
+Bearbeiten). Unterkategorien übernehmen den Typ ihrer Oberkategorie; die Kategorienliste zeigt ihn als kleines grünes
+(Einnahme) oder rotes (Ausgabe) Label. „Umbuchung“ hat keinen Typ. Der Typ bestimmt, in welchem Diagramm der Übersicht
+eine Kategorie erscheint. Bei bestehenden Daten wird er beim ersten Start nach dem Update automatisch anhand der
+Buchungsvorzeichen gesetzt (überwiegend positiv → Einnahme, überwiegend negativ oder keine Buchungen → Ausgabe) und
+lässt sich jederzeit ändern.
 
 ## Daten und Backup
 

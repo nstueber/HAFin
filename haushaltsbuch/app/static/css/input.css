@@ -505,7 +505,11 @@
       hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent
       dark:text-gray-300 dark:hover:text-gray-100;
   }
-  .segmented-item.is-active {
+  .segmented-item.is-active,
+  .segmented-item:has(input:checked) {
     @apply bg-accent text-white shadow-sm hover:text-white dark:hover:text-white;
+  }
+  .segmented-item:has(input:focus-visible) {
+    @apply ring-2 ring-accent;
   }
 }

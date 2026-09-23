@@ -6,11 +6,17 @@ from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models import Account, MappingProfile, Transaction, TransactionType
+from app.services.category_tree import categories_by_id
+from app.services.category_types import category_sign_hint
 from app.services.csv_detection import parse_from_header, parse_transaction_rows
 from app.services.rules import apply_rule_to_transaction, find_matching_rule, load_rules
 from app.templating import templates
 
 router = APIRouter(prefix="/import", tags=["import"])
+
+
+def _sign_mismatch(txn: Transaction, cats_by_id: dict) -> bool:
+    return category_sign_hint(txn.amount, txn.category_id, cats_by_id) is not None
 
 
 def _form_context(
@@ -114,6 +120,8 @@ async def run_import(
     # Regeln (Prioritaetsreihenfolge) einmal laden; sie gelten nur fuer NEU importierte Buchungen -
     # Duplikate werden weiter oben uebersprungen und bestehende Buchungen nie angefasst.
     rules = load_rules(session)
+    cats_by_id = categories_by_id(session)
+    auto_mismatch = 0  # fest zugewiesen, aber Vorzeichen passt nicht zum Kategorie-Typ (nur Hinweis)
 
     for index, parsed in enumerate(parsed_rows, start=1):
         if parsed.error:
@@ -159,6 +167,8 @@ async def run_import(
                 auto_suggested += 1
             else:
                 auto_categorized += 1
+                if _sign_mismatch(new_txn, cats_by_id):
+                    auto_mismatch += 1
         session.add(new_txn)
         imported += 1
 
@@ -176,6 +186,7 @@ async def run_import(
             "imported": imported,
             "auto_categorized": auto_categorized,
             "auto_suggested": auto_suggested,
+            "auto_mismatch": auto_mismatch,
             "duplicates": duplicates,
             "errors": errors,
         },
@@ -207,6 +218,8 @@ async def force_import_duplicates(
     rules = load_rules(session)
     auto_categorized = 0
     auto_suggested = 0
+    auto_mismatch = 0
+    cats_by_id = categories_by_id(session)
     for row, date_str, payee, purpose, amount_str in zip(
         all_row, all_date, all_payee, all_purpose, all_amount
     ):
@@ -233,6 +246,8 @@ async def force_import_duplicates(
                 auto_suggested += 1
             else:
                 auto_categorized += 1
+                if _sign_mismatch(new_txn, cats_by_id):
+                    auto_mismatch += 1
         session.add(new_txn)
         imported_rows.append(row)
     session.commit()
@@ -242,6 +257,7 @@ async def force_import_duplicates(
         f"{count} Buchung{'en' if count != 1 else ''} trotzdem importiert."
         + (f" {auto_categorized} davon automatisch kategorisiert." if auto_categorized else "")
         + (f" Für {auto_suggested} liegt ein Kategorie-Vorschlag vor." if auto_suggested else "")
+        + (f" {auto_mismatch} mit ungewöhnlichem Vorzeichen für den Kategorie-Typ." if auto_mismatch else "")
         if count
         else "Keine Zeile ausgewählt."
     )

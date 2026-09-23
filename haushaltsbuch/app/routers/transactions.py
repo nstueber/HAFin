@@ -20,6 +20,7 @@ from app.models import (
     UMBUCHUNG_KEY,
 )
 from app.services.category_tree import category_groups
+from app.services.category_types import category_sign_hint
 from app.system_categories import get_or_create_system_category, get_system_category
 from app.templating import templates
 
@@ -295,6 +296,8 @@ def _build_row(
         "counter_account": counter_account,
         "transfer_candidates": transfer_candidates,
         "is_bargeld": bargeld_category_id is not None and txn.category_id == bargeld_category_id,
+        # Nur Hinweis (keine Sperre): Vorzeichen des Betrags passt nicht zum Typ der zugewiesenen Kategorie
+        "type_hint": category_sign_hint(txn.amount, txn.category_id, categories_by_id),
         "split_count": len(splits),
     }
 

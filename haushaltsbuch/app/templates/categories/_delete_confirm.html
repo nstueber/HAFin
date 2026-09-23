@@ -24,7 +24,8 @@
   {% if has_budget %}
   <p>Das für diese Kategorie hinterlegte Budget wird mitgelöscht.</p>
   {% endif %}
-  {% if not children and not transaction_count and not rule_count and not has_budget %}
+  {% set unused = not children and not transaction_count and not rule_count and not has_budget %}
+  {% if unused %}
   <p>Diese Kategorie wird aktuell nicht verwendet und kann gefahrlos gelöscht werden.</p>
   {% endif %}
 </div>
@@ -44,6 +45,6 @@
     hx-target="#categories-container"
     hx-swap="outerHTML"
   >
-    Trotzdem löschen
+    {{ "Löschen" if unused else "Trotzdem löschen" }}
   </button>
 </div>

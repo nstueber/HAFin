@@ -23,6 +23,7 @@ from app.models import (
 )
 from app.services import rules as rules_svc
 from app.services.category_tree import categories_by_id, category_groups, category_path
+from app.services.category_types import category_sign_hint
 from app.templating import templates
 
 router = APIRouter(prefix="/categorization-rules", tags=["categorization-rules"])
@@ -195,6 +196,7 @@ def apply_preview(request: Request, session: Session = Depends(get_session)) -> 
             "rule_text": f"{rules_svc.describe_rule(h.rule)} „{h.rule.value}“",
             "category_path": category_path(by_id.get(h.rule.category_id), by_id),
             "is_suggestion": h.rule.mode == "suggest",
+            "type_hint": category_sign_hint(h.txn.amount, h.rule.category_id, by_id),
         }
         for h in hits
     ]

@@ -2,7 +2,7 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
-from app.models import SYSTEM_CATEGORY_DEFAULT_NAMES, Category
+from app.models import SYSTEM_CATEGORY_DEFAULT_NAMES, UMBUCHUNG_KEY, Category
 
 
 def get_system_category(session: Session, key: str) -> Optional[Category]:
@@ -30,6 +30,8 @@ def get_or_create_system_category(session: Session, key: str) -> Category:
     if category is None:
         category = Category(name=default_name)
     category.system_key = key
+    if key == UMBUCHUNG_KEY:
+        category.type = None  # Umbuchung ist weder Einnahme noch Ausgabe
     session.add(category)
     session.commit()
     session.refresh(category)

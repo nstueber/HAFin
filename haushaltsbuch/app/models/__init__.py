@@ -7,6 +7,9 @@ from app.models.categorization_rule import (
 )
 from app.models.category import (
     BARGELD_KEY,
+    CATEGORY_TYPE_EXPENSE,
+    CATEGORY_TYPE_INCOME,
+    CATEGORY_TYPES,
     SYSTEM_CATEGORY_DEFAULT_NAMES,
     UMBUCHUNG_KEY,
     Category,
@@ -20,6 +23,9 @@ from app.models.transfer_rejection import RejectedTransferPair
 __all__ = [
     "Account",
     "BARGELD_KEY",
+    "CATEGORY_TYPES",
+    "CATEGORY_TYPE_EXPENSE",
+    "CATEGORY_TYPE_INCOME",
     "CategorizationRule",
     "Category",
     "CategoryBudget",

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_segmented.html" import segmented_radios %}
 
 {% block content %}
 <div class="card page-narrow">
@@ -25,6 +26,43 @@
         {% endfor %}
       </select>
     </div>
+    {% if is_neutral %}
+    <div class="mt-4">
+      <span class="form-label">Typ</span>
+      <p class="text-sm text-gray-500 dark:text-gray-400">Neutral - Umbuchungen sind weder Einnahme noch Ausgabe.</p>
+    </div>
+    {% else %}
+    {# Oberkategorie: Typ waehlbar; Unterkategorie: geerbter Typ (nicht editierbar). Umschalten per JS beim Wechsel der Oberkategorie #}
+    <div class="mt-4" id="type-own" {% if category.parent_id %}hidden{% endif %}>
+      <span class="form-label">Typ</span>
+      {{ segmented_radios("type", [("ausgabe", "Ausgabe"), ("einnahme", "Einnahme")], current_type or "ausgabe", "Typ der Oberkategorie") }}
+      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Gilt auch für alle Unterkategorien.</p>
+    </div>
+    <div class="mt-4" id="type-inherited" {% if not category.parent_id %}hidden{% endif %}>
+      <span class="form-label">Typ (geerbt)</span>
+      <p class="text-sm text-gray-700 dark:text-gray-300" id="type-inherited-text">
+        {{ type_labels[current_type] if current_type else "–" }}
+      </p>
+      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Wird von der Oberkategorie übernommen und dort geändert.</p>
+    </div>
+    <script>
+      (function () {
+        var parentTypes = {{ parent_types|tojson }};
+        var labels = {{ type_labels|tojson }};
+        var select = document.querySelector('select[name="parent_id"]');
+        function sync() {
+          var hasParent = !!select.value;
+          document.getElementById("type-own").hidden = hasParent;
+          document.getElementById("type-inherited").hidden = !hasParent;
+          if (hasParent) {
+            document.getElementById("type-inherited-text").textContent = labels[parentTypes[select.value]] || "–";
+          }
+        }
+        select.addEventListener("change", sync);
+        sync();
+      })();
+    </script>
+    {% endif %}
     <div class="mt-5 flex items-center gap-3">
       <button type="submit" class="btn-primary">Speichern</button>
       <a href="/categories" class="btn-outline">Abbrechen</a>

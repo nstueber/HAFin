@@ -7,11 +7,19 @@ from sqlmodel import Session, select
 
 from app.database import engine, get_session
 from app.models import (
+    CATEGORY_TYPE_EXPENSE,
+    CATEGORY_TYPES,
     SYSTEM_CATEGORY_DEFAULT_NAMES,
+    UMBUCHUNG_KEY,
     CategorizationRule,
     Category,
     CategoryBudget,
     Transaction,
+)
+from app.services.category_types import (
+    TYPE_LABELS,
+    backfill_category_types,
+    effective_type,
 )
 from app.system_categories import get_or_create_system_category
 from app.templating import templates
@@ -32,6 +40,17 @@ def ensure_system_categories() -> None:
             get_or_create_system_category(session, key)
 
 
+def backfill_types() -> None:
+    """Bestimmt den Typ (Einnahme/Ausgabe) bestehender Oberkategorien einmalig (Migration, idempotent)."""
+    with Session(engine) as session:
+        backfill_category_types(session)
+
+
+def _valid_type(value: str) -> str:
+    """Formularwert -> gueltiger Kategorie-Typ (Standard: Ausgabe)."""
+    return value if value in CATEGORY_TYPES else CATEGORY_TYPE_EXPENSE
+
+
 def _top_level_categories(session: Session) -> list[Category]:
     return session.exec(
         select(Category).where(Category.parent_id.is_(None)).order_by(Category.name)
@@ -50,6 +69,7 @@ def _list_context(session: Session, **extra) -> dict:
         "active_nav": "categories",
         "top_level": top_level,
         "children_by_parent": children_by_parent,
+        "type_labels": TYPE_LABELS,
         **extra,
     }
 
@@ -93,22 +113,49 @@ def create_category(
     request: Request,
     name: list[str] = Form(...),
     parent_id: list[str] = Form(...),
+    type: list[str] = Form(default=[]),
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     """Legt eine oder mehrere Kategorien in einem Vorgang an (Mehrfachanlage-
-    Modal: beliebig viele Name+Oberkategorie-Zeilen). Leere Namenszeilen
+    Modal: beliebig viele Name+Oberkategorie+Typ-Zeilen). Leere Namenszeilen
     (z.B. eine per JS hinzugefuegte, aber nicht ausgefuellte Zeile) werden
-    dabei still uebersprungen statt einen Fehler zu werfen."""
+    dabei still uebersprungen statt einen Fehler zu werfen. Der Typ gilt nur fuer
+    Oberkategorien - Unterkategorien erben ihn (das Feld der Zeile wird ignoriert)."""
     created = False
-    for row_name, row_parent_id in zip(name, parent_id):
+    types = list(type) + [""] * (len(name) - len(type))
+    for row_name, row_parent_id, row_type in zip(name, parent_id, types):
         row_name = row_name.strip()
         if not row_name:
             continue
-        session.add(Category(name=row_name, parent_id=int(row_parent_id) if row_parent_id else None))
+        parent = int(row_parent_id) if row_parent_id else None
+        session.add(
+            Category(
+                name=row_name,
+                parent_id=parent,
+                type=None if parent else _valid_type(row_type),
+            )
+        )
         created = True
     if created:
         session.commit()
     return RedirectResponse(url="/categories", status_code=303)
+
+
+def _edit_context(session: Session, category: Category, **extra) -> dict:
+    by_id = {c.id: c for c in session.exec(select(Category)).all()}
+    top_level = [c for c in _top_level_categories(session) if c.id != category.id]
+    return {
+        "title": "Kategorie bearbeiten",
+        "active_nav": "categories",
+        "category": category,
+        "top_level": top_level,
+        "current_type": effective_type(category, by_id),
+        "is_neutral": category.system_key == UMBUCHUNG_KEY,
+        "type_labels": TYPE_LABELS,
+        # Typ jeder Oberkategorie fuer die Anzeige des geerbten Typs beim Wechsel der Oberkategorie
+        "parent_types": {c.id: effective_type(c, by_id) for c in top_level},
+        **extra,
+    }
 
 
 @router.get("/{category_id}/edit", response_class=HTMLResponse)
@@ -116,16 +163,10 @@ def edit_category_form(
     request: Request, category_id: int, session: Session = Depends(get_session)
 ) -> HTMLResponse:
     category = session.get(Category, category_id)
-    top_level = [c for c in _top_level_categories(session) if c.id != category_id]
     return templates.TemplateResponse(
         request=request,
         name="categories/edit.html",
-        context={
-            "title": "Kategorie bearbeiten",
-            "active_nav": "categories",
-            "category": category,
-            "top_level": top_level,
-        },
+        context=_edit_context(session, category),
     )
 
 
@@ -135,6 +176,7 @@ def update_category(
     category_id: int,
     name: str = Form(""),
     parent_id: str = Form(""),
+    type: str = Form(""),
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     category = session.get(Category, category_id)
@@ -142,17 +184,10 @@ def update_category(
     new_name = name.strip()
 
     def _reject(message: str) -> HTMLResponse:
-        top_level = [c for c in _top_level_categories(session) if c.id != category_id]
         return templates.TemplateResponse(
             request=request,
             name="categories/edit.html",
-            context={
-                "title": "Kategorie bearbeiten",
-                "active_nav": "categories",
-                "category": category,
-                "top_level": top_level,
-                "form_error": message,
-            },
+            context=_edit_context(session, category, form_error=message),
             status_code=400,
         )
 
@@ -169,8 +204,17 @@ def update_category(
     if new_parent_id == category_id:
         return _reject("Eine Kategorie kann nicht ihre eigene Oberkategorie sein.")
 
+    # Typ: nur Oberkategorien tragen ihn (Unterkategorien erben); Umbuchung bleibt neutral.
+    if category.system_key == UMBUCHUNG_KEY or new_parent_id is not None:
+        new_type = None
+    elif type in CATEGORY_TYPES:
+        new_type = type
+    else:
+        new_type = category.type or _valid_type("")  # z.B. Unterkategorie wird zur Oberkategorie ohne Auswahl
+
     category.name = new_name
     category.parent_id = new_parent_id
+    category.type = new_type
     session.add(category)
     session.commit()
     return RedirectResponse(url="/categories", status_code=303)
@@ -226,6 +270,7 @@ def delete_category(
     children = session.exec(select(Category).where(Category.parent_id == category_id)).all()
     for child in children:
         child.parent_id = None
+        child.type = category.type or CATEGORY_TYPE_EXPENSE  # behaelt den bisher geerbten Typ
         session.add(child)
 
     # Zugeordnete Buchungen werden unkategorisiert, nicht mitgeloescht.
@@ -271,7 +316,7 @@ def export_categories(session: Session = Depends(get_session)) -> Response:
         children = session.exec(
             select(Category).where(Category.parent_id == cat.id).order_by(Category.name)
         ).all()
-        data.append({"name": cat.name, "children": [c.name for c in children]})
+        data.append({"name": cat.name, "type": cat.type, "children": [c.name for c in children]})
     payload = json.dumps(data, ensure_ascii=False, indent=2)
     return Response(
         content=payload,
@@ -310,7 +355,7 @@ async def import_categories(
 
         parent = top_level_by_name.get(top_name.lower())
         if parent is None:
-            parent = Category(name=top_name, parent_id=None)
+            parent = Category(name=top_name, parent_id=None, type=_valid_type(str(entry.get("type", ""))))
             session.add(parent)
             session.commit()
             session.refresh(parent)

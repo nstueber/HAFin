@@ -19,6 +19,9 @@
       {% if auto_categorized %}
       <dd class="mt-1 text-xs text-gray-500 dark:text-gray-400">davon {{ auto_categorized }} automatisch kategorisiert</dd>
       {% endif %}
+      {% if auto_mismatch %}
+      <dd class="mt-1 text-xs text-amber-600 dark:text-amber-400">{{ auto_mismatch }} mit ungewöhnlichem Vorzeichen für den Kategorie-Typ (in der Buchungsliste markiert)</dd>
+      {% endif %}
       {% if auto_suggested %}
       <dd class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ auto_suggested }} mit Kategorie-Vorschlag (in der Buchungsliste übernehmbar)</dd>
       {% endif %}

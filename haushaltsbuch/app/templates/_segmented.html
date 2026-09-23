@@ -2,6 +2,7 @@
    farbigen Hintergrund hat (siehe .segmented / .segmented-item in input.css).
    options: Liste von (Schluessel, Beschriftung, Ziel); active: aktiver Schluessel.
    - segmented_links:   Optionen sind Links (Ziel = URL), Zustand kommt vom Server
+   - segmented_radios:  Optionen sind Radio-Buttons in einem Formular (Wert wird mit dem Formular gesendet)
    - segmented_buttons: Optionen sind Buttons (Ziel = Wert fuer data-mode), Zustand wird per JS umgeschaltet #}
 {% macro segmented_links(options, active, label="", stretch=false) %}
 {# stretch: auf schmalen Displays ueber die volle Breite, Optionen gleich breit (ab "sm" wieder kompakt) #}
@@ -16,6 +17,17 @@
 <div class="segmented" role="group" aria-label="{{ label }}">
   {% for key, text, mode in options %}
   <button type="button" data-mode="{{ mode }}" class="segmented-item {{ item_class }}{{ ' is-active' if key == active else '' }}" aria-pressed="{{ 'true' if key == active else 'false' }}">{{ text }}</button>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro segmented_radios(name, options, active, label="") %}
+{# options: Liste von (Wert, Beschriftung); das aktive Item wird per :has(:checked) gefaerbt (input.css) #}
+<div class="segmented" role="radiogroup" aria-label="{{ label }}">
+  {% for value, text in options %}
+  <label class="segmented-item cursor-pointer">
+    <input type="radio" name="{{ name }}" value="{{ value }}" class="sr-only"{{ ' checked' if value == active else '' }} />{{ text }}
+  </label>
   {% endfor %}
 </div>
 {% endmacro %}

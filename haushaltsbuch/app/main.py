@@ -59,6 +59,7 @@ def on_startup() -> None:
     backup.cleanup_stale_uploads()
     categories.ensure_system_categories()
     transactions.backfill_umbuchung_categories()
+    categories.backfill_types()
 
 
 @app.get("/health")
