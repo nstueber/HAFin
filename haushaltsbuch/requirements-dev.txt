@@ -1,4 +1,4 @@
 # Zusaetzlich zu requirements.txt, nur fuer die Entwicklung (Unit-Tests der Service-Schicht,
 # siehe README "Unit-Tests"). NICHT im Docker-Image installiert.
 -r requirements.txt
-pytest>=8
+pytest>=9.1.1
