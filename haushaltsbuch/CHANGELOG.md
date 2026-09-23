@@ -6,6 +6,44 @@ Alle nennenswerten Änderungen an dieser App werden hier festgehalten. Das Forma
 
 ## [Unveröffentlicht]
 
+## [0.4.0] - 2026-09-23
+
+### Hinzugefügt
+- **Kategorie-Typ (Einnahme/Ausgabe) pro Oberkategorie.** Beim Anlegen und Bearbeiten wählbar; Unterkategorien erben den
+  Typ ihrer Oberkategorie (Anzeige, nicht editierbar). Die Kategorienliste kennzeichnet ihn dezent (grün = Einnahme,
+  rot = Ausgabe); „Umbuchung" bleibt neutral. Der Typ ist Teil von Backup & Restore und des Kategorien-JSON-Exports.
+- **Hinweis bei ungewöhnlichem Vorzeichen:** passt das Vorzeichen einer Buchung nicht zum Typ ihrer Kategorie (z. B.
+  positiver Betrag in einer Ausgaben-Kategorie), zeigt die Buchungsliste ein kleines Warn-Icon mit Tooltip – bei
+  manueller Zuordnung, Massenzuweisung und Regeln (auch in der Regel-Vorschau und im CSV-Import-Ergebnis). Nur ein
+  Hinweis: die Zuweisung bleibt immer möglich.
+
+- **Beträge in den Kategorie-Diagrammen:** jeder Balken zeigt zusätzlich zur Länge den genauen Betrag; im Modus
+  „Gestapelt nach Unterkategorie" den Gesamtwert der Oberkategorie am Balkenende.
+- **Vorzeitraumsvergleich:** optional (im Filter-Menü der Übersicht, Standard: aus) zeigt je Kategorie die
+  Veränderung gegenüber dem direkt vorherigen Zeitraum derselben Auflösung (z. B. Vormonat), inkl. Prozentwert bzw.
+  „neu" ohne Vorzeitraum. Farbe nach Kategorie-Typ: bei Ausgaben ist ein Anstieg rot (schlechter), bei Einnahmen grün
+  (besser). Nur im Modus „Einfach".
+- Screenshots von Übersicht und Buchungsliste im README (mit erfundenen Testdaten).
+
+### Geändert
+- **Übersicht: „Kategorien im Zeitraum" getrennt nach Typ** in „Ausgaben nach Kategorie" (Rot-/Orange-Töne) und
+  „Einnahmen nach Kategorie" (Grüntöne), jeweils absteigend nach Betrag. Umschalter „Einfach/Gestapelt" und
+  Konto-Filter gelten für beide; ohne Werte einer Gruppe erscheint ein Platzhaltertext.
+- **Filter-Menü der Übersicht zusammengelegt:** Umbuchungsfilter und Vorzeitraumsvergleich teilen sich jetzt ein
+  Icon mit gemeinsamem Untermenü statt zwei getrennter Icons; der Punkt-Indikator erscheint, sobald mindestens eine
+  der beiden Einstellungen vom Standard („Ohne Umbuchungen", Vergleich aus) abweicht.
+
+### Behoben
+- Beim Löschen einer aktuell unbenutzten Kategorie heißt der Bestätigungs-Button „Löschen" statt „Trotzdem löschen"
+  (das „Trotzdem" ergab dort keinen Sinn). Bei tatsächlich noch verwendeten Kategorien bleibt es bei „Trotzdem
+  löschen".
+
+### Hinweis
+- Beim ersten Start nach dem Update erhält jede bestehende Oberkategorie automatisch einen Typ: die Mehrheit der
+  Vorzeichen ihrer Buchungen (inkl. Unterkategorien) entscheidet, ohne Buchungen gilt „Ausgabe". Die Migration ändert
+  keine Buchungen und überschreibt nie einen bereits gesetzten Typ; das Ergebnis steht im App-Log. Backups aus älteren
+  Versionen lassen sich weiterhin importieren (der Typ wird dabei auf dieselbe Weise bestimmt).
+
 ## [0.3.1] - 2026-09-21
 
 ### Hinzugefügt
@@ -110,7 +148,8 @@ Alle nennenswerten Änderungen an dieser App werden hier festgehalten. Das Forma
 - Schema-Änderungen an der Datenbank werden beim Start automatisch nachgezogen; vor einem
   Update empfiehlt sich trotzdem ein Backup.
 
-[Unveröffentlicht]: https://github.com/nstueber/HAFin/compare/v0.3.1...HEAD
+[Unveröffentlicht]: https://github.com/nstueber/HAFin/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/nstueber/HAFin/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/nstueber/HAFin/compare/v0.2.0...v0.3.1
 [0.2.0]: https://github.com/nstueber/HAFin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nstueber/HAFin/releases/tag/v0.1.0
