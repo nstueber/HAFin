@@ -6,6 +6,27 @@ Alle nennenswerten Änderungen an dieser App werden hier festgehalten. Das Forma
 
 ## [Unveröffentlicht]
 
+## [0.4.1] - 2026-09-23
+
+Rein technische Verbesserungen ohne sichtbare Änderung am Funktionsumfang.
+
+### Geändert
+- **Ingress-URL-Handling vereinheitlicht:** JS-seitig ausgelöste Requests (z. B. der
+  Dashboard-Drilldown) laufen jetzt über einen zentralen Helfer (`hbUrl()`/`window.HB_BASE_PATH`),
+  der den Ingress-Pfad direkt aus dem Request kennt, statt über eine manuell gepflegte Liste
+  bekannter Routennamen umgeschrieben zu werden. Serverseitig gerenderte Links/Formulare
+  (`href`, `hx-*`) sind unverändert.
+
+### Hinzugefügt (Entwicklung, kein Funktionsumfang)
+- Visuelle Pixel-Regressionstests (Dashboard hell/dunkel + Kategorie-Löschen-, Regel- und
+  Reset-Dialog) gegen versionierte Baseline-Screenshots.
+- Schnelle Unit-Tests für die Service-Schicht (Kategorisierungsregeln, Kategorie-Typ-Migration,
+  CSV-Erkennung, Backup/Restore), unabhängig von Server und Browser.
+- Ein `schema_version`-Marker in der Datenbank (`app_meta`-Tabelle) als Grundlage für künftige
+  Migrationsentscheidungen; dazu die verbindliche Regel im technischen README, Schemaänderungen
+  immer additiv (neue Spalte statt Umbenennen/Löschen) umzusetzen.
+- Wöchentliche Dependabot-Prüfung für Python- und Docker-Basis-Abhängigkeiten.
+
 ## [0.4.0] - 2026-09-23
 
 ### Hinzugefügt
@@ -148,7 +169,8 @@ Alle nennenswerten Änderungen an dieser App werden hier festgehalten. Das Forma
 - Schema-Änderungen an der Datenbank werden beim Start automatisch nachgezogen; vor einem
   Update empfiehlt sich trotzdem ein Backup.
 
-[Unveröffentlicht]: https://github.com/nstueber/HAFin/compare/v0.4.0...HEAD
+[Unveröffentlicht]: https://github.com/nstueber/HAFin/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/nstueber/HAFin/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/nstueber/HAFin/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/nstueber/HAFin/compare/v0.2.0...v0.3.1
 [0.2.0]: https://github.com/nstueber/HAFin/compare/v0.1.0...v0.2.0
