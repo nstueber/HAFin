@@ -24,7 +24,7 @@ COPY app/static/css/input.css ./app/static/css/input.css
 RUN ./tailwindcss -i ./app/static/css/input.css -o ./app/static/css/app.css --minify --cwd .
 
 # --- Stage 2: Anwendungsimage ---
-FROM python:3.12-alpine
+FROM python:3.14-alpine
 
 # Vom home-assistant/builder als Build-Args gesetzt (Default fuer lokale Builds)
 ARG BUILD_ARCH=local
