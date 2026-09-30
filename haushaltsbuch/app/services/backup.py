@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any, Iterable, Optional
 
-from sqlalchemy import delete, func
+from sqlalchemy import delete, func, or_
 from sqlmodel import Session, select
 
 from app.models import (
@@ -1153,3 +1153,78 @@ def reset_all(session: Session) -> dict[str, int]:
             f"Zurücksetzen abgebrochen und zurückgerollt: {exc}. Es wurden keine Daten gelöscht."
         ) from exc
     return deleted
+
+
+# ----------------------------------------------------------------------------------------
+# BUCHUNGEN EINES ZEITRAUMS LOESCHEN (eigene, gezieltere Funktion als der Komplett-Reset)
+# ----------------------------------------------------------------------------------------
+
+
+def _period_transaction_ids(
+    session: Session, date_from: date, date_to: date, account_id: Optional[int]
+) -> list[int]:
+    query = select(Transaction.id).where(
+        Transaction.booking_date >= date_from, Transaction.booking_date <= date_to
+    )
+    if account_id is not None:
+        query = query.where(Transaction.account_id == account_id)
+    return list(session.exec(query).all())
+
+
+def count_transactions_in_period(
+    session: Session, date_from: date, date_to: date, account_id: Optional[int]
+) -> int:
+    return len(_period_transaction_ids(session, date_from, date_to, account_id))
+
+
+def delete_transactions_in_period(
+    session: Session, date_from: date, date_to: date, account_id: Optional[int]
+) -> dict[str, int]:
+    """Loescht alle Buchungen im Zeitraum [date_from, date_to] (inklusive), optional auf ein Konto
+    eingegrenzt - anders als reset_all() bleiben Konten, Kategorien, Regeln und Budgets unberuehrt.
+    Eine Transaktion; Sicherheits-Backup und Bestaetigung sind Sache des Aufrufers.
+
+    Eine Umbuchung, deren Gegenbuchung AUSSERHALB des Zeitraums liegt (und deshalb bestehen
+    bleibt), wird auf der ueberlebenden Seite sauber entkoppelt (gleiches Verhalten wie der
+    manuelle "Verknuepfung aufheben"-Button in transactions.py) statt eine tote counter_transaction_id
+    zu hinterlassen.
+    """
+    ids = set(_period_transaction_ids(session, date_from, date_to, account_id))
+    result = {"transactions": len(ids), "transaction_splits": 0}
+    if not ids:
+        return result
+    try:
+        survivors = session.exec(
+            select(Transaction).where(
+                Transaction.counter_transaction_id.in_(ids), Transaction.id.not_in(ids)
+            )
+        ).all()
+        for survivor in survivors:
+            survivor.counter_transaction_id = None
+            survivor.transaction_type = (
+                TransactionType.EINGANG if survivor.amount > 0 else TransactionType.AUSGANG
+            )
+            survivor.category_id = None
+            session.add(survivor)
+        result["transaction_splits"] = session.exec(
+            select(func.count())
+            .select_from(TransactionSplit)
+            .where(TransactionSplit.transaction_id.in_(ids))
+        ).one()
+        session.exec(delete(TransactionSplit).where(TransactionSplit.transaction_id.in_(ids)))
+        session.exec(
+            delete(RejectedTransferPair).where(
+                or_(
+                    RejectedTransferPair.transaction_a_id.in_(ids),
+                    RejectedTransferPair.transaction_b_id.in_(ids),
+                )
+            )
+        )
+        session.exec(delete(Transaction).where(Transaction.id.in_(ids)))
+        session.commit()
+    except Exception as exc:  # noqa: BLE001 - zurueckrollen, verstaendlich melden
+        session.rollback()
+        raise ImportFailed(
+            f"Löschen abgebrochen und zurückgerollt: {exc}. Es wurden keine Daten gelöscht."
+        ) from exc
+    return result

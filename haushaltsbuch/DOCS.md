@@ -21,8 +21,13 @@ wird in der App selbst eingestellt.
 1. **Einstellungen → Konten** → „Neues Konto“ anlegen (Name, IBAN).
 2. **Einstellungen → Mapping-Profile** → „Neues Profil anlegen“: eine Beispiel-CSV der Bank hochladen; Trennzeichen,
    Kodierung, Datumsformat und Spaltenzuordnung werden erkannt und lassen sich prüfen.
-3. **Import** → Konto und Profil wählen, CSV hochladen. Bereits vorhandene Buchungen werden als
-   Duplikate übersprungen (übersprungene Zeilen lassen sich bei Bedarf trotzdem importieren).
+3. **Import** → Konto und Profil wählen, CSV hochladen. Sowohl die erfolgreich importierten als auch
+   die als Duplikat übersprungenen Buchungen lassen sich über die jeweilige Kachel im Ergebnis als
+   Liste ansehen - übersprungene Zeilen bei Bedarf trotzdem importieren, irrtümlich importierte
+   Buchungen direkt aus dieser Liste wieder löschen. Fehlen im abgedeckten Zeitraum der Datei
+   umgekehrt Buchungen, die schon in der Datenbank stehen (z. B. ein unvollständiger Bank-Export),
+   listet das Ergebnis sie als eigenen, rein informativen Hinweis auf - die letzten 20 Importe
+   (Zeitpunkt, Konto, Buchungszeitraum, Anzahl) stehen ausklappbar unterhalb des Formulars.
 4. **Buchungen** → Kategorien zuweisen, Umbuchungen bestätigen, Bargeld aufteilen. Passt das Vorzeichen einer
    Buchung nicht zum Typ ihrer Kategorie (siehe unten), erscheint ein kleines Warn-Icon – die Zuweisung bleibt möglich.
 5. **Übersicht** → Kennzahlen und Kategorie-Diagramme („Ausgaben nach Kategorie“ und „Einnahmen nach Kategorie“) mit
@@ -114,12 +119,20 @@ kein Budget). In der **Übersicht** erscheint bei den Zeiträumen „Monat“ un
 einem Fortschrittsbalken je Kategorie (grün bis 79 %, gelb 80–100 %, rot darüber); ein Klick zeigt die zugehörigen Buchungen. Ausgaben einer Unterkategorie zählen auch in das Budget ihrer
 Oberkategorie. Gezählt werden alle Konten, ohne Umbuchungen.
 
-## Alle Daten löschen
+## Daten löschen
 
 Unter **Einstellungen → Backup & Restore → Alle Daten löschen** setzt du die Datenbank komplett zurück (Konten,
 Kategorien außer den Systemkategorien, Mapping-Profile, Regeln, Budgets, Buchungen). Zur Sicherheit musst du `LÖSCHEN`
 eingeben; direkt vor dem Löschen wird automatisch ein Sicherheits-Backup erstellt, das du danach herunterladen kannst.
 Kategorisierungsregeln und Budgets sind auch Teil des Backups (eigene Datengruppen beim Export/Import).
+
+Direkt darunter **Buchungen eines Zeitraums löschen**: löscht gezielt nur die Buchungen eines wählbaren Zeitraums
+(Schnellauswahl Tag/Woche/Monat/Jahr oder freies Von/Bis), optional auf ein Konto eingegrenzt - Konten, Kategorien,
+Regeln und Budgets bleiben dabei unverändert. Gleiche Absicherung wie oben (Bestätigungswort, Sicherheits-Backup davor).
+
+Beim **Löschen einer noch verwendeten Kategorie** (Einstellungen → Kategorien) lässt sich optional eine andere
+Kategorie desselben Typs (Einnahme/Ausgabe) wählen, der die betroffenen Buchungen stattdessen zugeordnet werden -
+ohne Auswahl werden sie wie bisher unkategorisiert.
 
 ## Version und Lizenzen
 

@@ -67,4 +67,45 @@
   </form>
   {% endif %}
 </div>
+
+{% if history %}
+<details class="card modal-wide">
+  <summary class="cursor-pointer text-base font-semibold marker:text-gray-400">
+    Import-Historie ({{ history|length }})
+  </summary>
+  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+    Die letzten {{ history|length }} Importe (insgesamt, über alle Konten hinweg).
+  </p>
+  <div class="mt-3 overflow-x-auto">
+    <table class="table-base" id="import-history-table">
+      <thead>
+        <tr>
+          <th>Zeitpunkt</th>
+          <th>Konto</th>
+          <th>Buchungszeitraum</th>
+          <th class="text-right">Importiert</th>
+          <th class="text-right">Duplikate übersprungen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in history %}
+        <tr>
+          <td class="whitespace-nowrap font-mono text-xs">{{ entry.imported_at.strftime("%d.%m.%Y %H:%M") }}</td>
+          <td>{{ entry.account_name }}</td>
+          <td class="whitespace-nowrap font-mono text-xs">
+            {% if entry.period_start and entry.period_end %}
+            {{ entry.period_start.strftime("%d.%m.%Y") }} – {{ entry.period_end.strftime("%d.%m.%Y") }}
+            {% else %}
+            –
+            {% endif %}
+          </td>
+          <td class="text-right font-mono">{{ entry.imported_count }}</td>
+          <td class="text-right font-mono text-gray-500 dark:text-gray-400">{{ entry.duplicate_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
 {% endblock %}

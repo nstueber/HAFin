@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import trash %}
 
 {% block content %}
 <div class="card page-narrow">
@@ -15,7 +16,19 @@
     </div>
     <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
       <dt class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Importiert</dt>
+      {% if imported_txns %}
+      <dd>
+        <button
+          type="button"
+          class="text-2xl font-semibold text-green-600 underline dark:text-green-400"
+          onclick="document.getElementById('imported-dialog').showModal()"
+        >
+          {{ imported }}
+        </button>
+      </dd>
+      {% else %}
       <dd class="mt-1 text-2xl font-semibold text-green-600 dark:text-green-400">{{ imported }}</dd>
+      {% endif %}
       {% if auto_categorized %}
       <dd class="mt-1 text-xs text-gray-500 dark:text-gray-400">davon {{ auto_categorized }} automatisch kategorisiert</dd>
       {% endif %}
@@ -106,6 +119,94 @@
       </button>
     </form>
   </dialog>
+  {% endif %}
+
+  {% if imported_txns %}
+  <div id="import-result-delete-result" class="hidden"></div>
+  <dialog id="imported-dialog" class="card modal-wide backdrop:bg-gray-900/50">
+    <h3 class="text-base font-semibold">Importierte Buchungen</h3>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      Diese Buchungen wurden gerade neu angelegt. Eine irrtümlich importierte Zeile lässt sich hier
+      direkt wieder löschen, ohne erst in die Buchungsliste zu wechseln.
+    </p>
+    <div class="mt-4 max-h-96 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
+      <table class="table-base table-stack">
+        <thead>
+          <tr>
+            <th>Datum</th>
+            <th>Auftraggeber/Empfänger</th>
+            <th>Verwendungszweck</th>
+            <th class="text-right">Betrag</th>
+            <th class="w-8"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in imported_txns %}
+          <tr id="transaction-row-{{ t.id }}">
+            <td class="whitespace-nowrap font-mono text-xs" data-label="Datum">{{ t.booking_date.isoformat() }}</td>
+            <td data-label="Auftraggeber">{{ t.payee }}</td>
+            <td class="text-xs text-gray-500 dark:text-gray-400" data-label="Zweck">{{ t.purpose or "–" }}</td>
+            <td class="whitespace-nowrap text-right font-mono" data-label="Betrag">{{ t.amount|format_currency }}</td>
+            <td>
+              <button
+                type="button"
+                class="btn-ghost-icon"
+                hx-post="/transactions/{{ t.id }}/delete"
+                hx-target="#import-result-delete-result"
+                hx-swap="innerHTML"
+                hx-confirm="Diese Buchung wirklich löschen?"
+                aria-label="Löschen"
+                title="Buchung löschen"
+              >
+                {{ trash() }}
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-4 flex justify-end">
+      <button type="button" class="btn-outline" onclick="document.getElementById('imported-dialog').close()">
+        Schließen
+      </button>
+    </div>
+  </dialog>
+  {% endif %}
+
+  {% if missing_bookings %}
+  <div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/40">
+    <p class="text-sm font-medium text-amber-800 dark:text-amber-300">
+      {{ missing_bookings|length }} fehlende Buchung{{ 'en' if missing_bookings|length != 1 else '' }} des gleichen Zeitraums aus früherem Import
+    </p>
+    <p class="mt-1 text-xs text-amber-700 dark:text-amber-400">
+      Diese bereits vorhandenen Buchungen liegen im Zeitraum der gerade importierten Datei, tauchen darin
+      aber nicht auf. Das kann harmlos sein (z. B. eine später stornierte oder korrigierte Buchung) oder auf
+      einen unvollständigen Bank-Export hindeuten - rein informativ, es wird nichts automatisch geändert.
+    </p>
+    <div class="mt-3 max-h-64 overflow-y-auto rounded-lg border border-amber-200 bg-white dark:border-amber-900/50 dark:bg-gray-900">
+      <table class="table-base table-stack">
+        <thead>
+          <tr>
+            <th>Datum</th>
+            <th>Auftraggeber/Empfänger</th>
+            <th>Verwendungszweck</th>
+            <th class="text-right">Betrag</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in missing_bookings %}
+          <tr>
+            <td class="whitespace-nowrap font-mono text-xs" data-label="Datum">{{ m.booking_date.isoformat() }}</td>
+            <td data-label="Auftraggeber">{{ m.payee }}</td>
+            <td class="text-xs text-gray-500 dark:text-gray-400" data-label="Zweck">{{ m.purpose or "–" }}</td>
+            <td class="whitespace-nowrap text-right font-mono" data-label="Betrag">{{ m.amount|format_currency }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
   {% endif %}
 
   {% if errors %}

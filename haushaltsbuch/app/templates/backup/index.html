@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import arrow_down_tray, arrow_up_tray, trash %}
 {% from "backup/_danger.html" import danger_panel %}
+{% from "_segmented.html" import segmented_buttons %}
 
 {% block content %}
 <div class="card">
@@ -99,6 +100,122 @@
     </button>
   </form>
 </div>
+
+<div class="card !border-red-200 dark:!border-red-900/50" id="period-delete-card">
+  <h2 class="flex items-center gap-2 text-base font-semibold text-red-700 dark:text-red-400">
+    {{ trash("h-5 w-5") }} Buchungen eines Zeitraums löschen
+  </h2>
+  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    Löscht gezielt nur die Buchungen eines wählbaren Zeitraums (optional auf ein Konto eingegrenzt) -
+    Konten, Kategorien, Mapping-Profile, Kategorisierungsregeln und Budgets bleiben dabei unverändert
+    (anders als „Alle Daten löschen“ oben).
+  </p>
+  <form method="post" action="/backup/delete-period" id="period-delete-form" class="mt-3">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div>
+        <label class="form-label">Schnellauswahl (Referenzdatum)</label>
+        <div class="flex flex-wrap items-center gap-2">
+          <input type="date" id="period-delete-ref" value="{{ today }}" class="form-input !w-auto" />
+          {{ segmented_buttons([
+               ("day", "Tag", "day"),
+               ("week", "Woche", "week"),
+               ("month", "Monat", "month"),
+               ("year", "Jahr", "year"),
+             ], "", "period-quick-btn", "Zeitraum-Schnellauswahl") }}
+        </div>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Füllt Von/Bis anhand des Referenzdatums aus - beide Felder bleiben danach frei änderbar.</p>
+      </div>
+      <div>
+        <label class="form-label">Konto</label>
+        <select name="account_id" id="period-delete-account" data-searchable class="form-input"
+                hx-get="/backup/delete-period/preview" hx-target="#period-delete-loss" hx-swap="innerHTML"
+                hx-include="closest form" hx-trigger="change">
+          <option value="">Alle Konten</option>
+          {% for acc in accounts %}
+          <option value="{{ acc.id }}">{{ acc.display_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Von</label>
+        <input type="date" name="date_from" id="period-delete-from" required class="form-input"
+               hx-get="/backup/delete-period/preview" hx-target="#period-delete-loss" hx-swap="innerHTML"
+               hx-include="closest form" hx-trigger="change" />
+      </div>
+      <div>
+        <label class="form-label">Bis</label>
+        <input type="date" name="date_to" id="period-delete-to" required class="form-input"
+               hx-get="/backup/delete-period/preview" hx-target="#period-delete-loss" hx-swap="innerHTML"
+               hx-include="closest form" hx-trigger="change" />
+      </div>
+    </div>
+    {% call danger_panel(confirm_word, "period-delete-loss", panel_id="period-delete-panel", input_id="period-delete-confirm-text", after="dem Löschen") %}
+    <span data-count="0">Bitte einen Zeitraum wählen.</span>
+    {% endcall %}
+    <button type="submit" id="period-delete-submit"
+            class="btn-primary mt-4 !bg-red-600 hover:!bg-red-700 focus-visible:!ring-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled>
+      {{ trash("h-4 w-4") }}
+      <span>Buchungen löschen</span>
+    </button>
+  </form>
+</div>
+
+<script>
+  (function () {
+    var refInput = document.getElementById("period-delete-ref");
+    var fromInput = document.getElementById("period-delete-from");
+    var toInput = document.getElementById("period-delete-to");
+
+    function fmt(d) {
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+    // Reine Lokalzeit-Arithmetik (kein toISOString()) - das wuerde bei der UTC-Umrechnung je nach
+    // Zeitzone auf den Vor-/Folgetag verschieben.
+    function computePeriod(refStr, granularity) {
+      var p = refStr.split("-").map(Number);
+      var ref = new Date(p[0], p[1] - 1, p[2]);
+      if (granularity === "day") return [fmt(ref), fmt(ref)];
+      if (granularity === "week") {
+        var weekday = (ref.getDay() + 6) % 7; // Montag = 0
+        var start = new Date(ref); start.setDate(ref.getDate() - weekday);
+        var end = new Date(start); end.setDate(start.getDate() + 6);
+        return [fmt(start), fmt(end)];
+      }
+      if (granularity === "year") return [ref.getFullYear() + "-01-01", ref.getFullYear() + "-12-31"];
+      var startM = new Date(ref.getFullYear(), ref.getMonth(), 1);
+      var endM = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+      return [fmt(startM), fmt(endM)];
+    }
+    document.querySelectorAll(".period-quick-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        document.querySelectorAll(".period-quick-btn").forEach(function (b) { b.classList.remove("is-active"); });
+        btn.classList.add("is-active");
+        var range = computePeriod(refInput.value, btn.getAttribute("data-mode"));
+        fromInput.value = range[0];
+        toInput.value = range[1];
+        fromInput.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    });
+
+    var confirmInput = document.getElementById("period-delete-confirm-text");
+    var submit = document.getElementById("period-delete-submit");
+    var confirmWord = {{ confirm_word|tojson }};
+    var currentCount = 0;
+    function refresh() {
+      submit.disabled = currentCount === 0 || !hafinConfirmWordOk(confirmInput, confirmWord);
+    }
+    confirmInput.addEventListener("input", refresh);
+    document.body.addEventListener("htmx:afterSwap", function (e) {
+      if (e.target && e.target.id === "period-delete-loss") {
+        var span = e.target.querySelector("[data-count]");
+        currentCount = span ? parseInt(span.getAttribute("data-count"), 10) || 0 : 0;
+        refresh();
+      }
+    });
+    refresh();
+  })();
+</script>
 
 <script>
   (function () {

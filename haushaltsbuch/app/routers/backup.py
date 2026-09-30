@@ -7,18 +7,24 @@ Endpunkte (bewusst eigenstaendig und skriptbar, nicht nur UI-Logik):
 - ``POST /backup/import/preview`` (UI: Datei pruefen, Vorschau, Modus waehlen)
 - ``POST /backup/reset`` (Form: ``confirm_text``) -> alle Daten loeschen (mit Sicherheits-Backup davor)
 - ``GET  /backup/safety/{name}`` -> automatisch erzeugtes Sicherheits-Backup (Modus "ersetzen"/Reset)
+- ``GET  /backup/delete-period/preview`` (Live-Vorschau: Anzahl betroffener Buchungen)
+- ``POST /backup/delete-period`` (Form: ``date_from``/``date_to``/``account_id``/``confirm_text``)
+  -> loescht nur die Buchungen eines Zeitraums (mit Sicherheits-Backup davor), Konten/Kategorien
+  bleiben unberuehrt
 """
 
 import json
 import re
 import uuid
+from datetime import date
 from time import time
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.database import DATA_DIR, get_session
+from app.models import Account
 from app.services import backup as svc
 from app.templating import templates
 
@@ -60,6 +66,8 @@ def _page_context(session: Session, **extra) -> dict:
         "requires": svc.REQUIRES,
         "current_counts": svc.target_counts(session),
         "confirm_word": svc.CONFIRM_WORD,
+        "accounts": session.exec(select(Account).order_by(Account.display_name)).all(),
+        "today": date.today().isoformat(),
         **extra,
     }
 
@@ -304,5 +312,100 @@ def reset_all_data(
         name="backup/result.html",
         context=_page_context(
             session, reset=True, reset_deleted=deleted, error=None, report=None, safety_backup=safety_name
+        ),
+    )
+
+
+def _parse_period_dates(date_from: str, date_to: str) -> tuple[date, date] | None:
+    try:
+        parsed_from = date.fromisoformat(date_from)
+        parsed_to = date.fromisoformat(date_to)
+    except ValueError:
+        return None
+    if parsed_from > parsed_to:
+        return None
+    return parsed_from, parsed_to
+
+
+@router.get("/delete-period/preview", response_class=HTMLResponse)
+def delete_period_preview(
+    date_from: str = "",
+    date_to: str = "",
+    account_id: str = "",
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    """Live-Vorschau (htmx, bei jeder Aenderung von Zeitraum/Konto) - liefert nur den Text fuer
+    das <p id="delete-period-loss">-Element des danger_panel-Makros, samt data-count fuers JS
+    (Submit-Button erst aktiv, wenn count > 0 UND Bestaetigungswort stimmt)."""
+    parsed = _parse_period_dates(date_from, date_to)
+    if parsed is None:
+        return HTMLResponse('<span data-count="0">Bitte einen gültigen Zeitraum wählen (Von ≤ Bis).</span>')
+    acc_id = int(account_id) if account_id else None
+    count = svc.count_transactions_in_period(session, parsed[0], parsed[1], acc_id)
+    if count == 0:
+        text = "Keine Buchungen im gewählten Zeitraum" + (" für dieses Konto" if acc_id else "") + "."
+    else:
+        text = (
+            f"{count} Buchung{'en' if count != 1 else ''} im Zeitraum "
+            f"{parsed[0].strftime('%d.%m.%Y')}–{parsed[1].strftime('%d.%m.%Y')}"
+            + (" für dieses Konto" if acc_id else " (alle Konten)")
+            + " werden unwiderruflich gelöscht."
+        )
+    return HTMLResponse(f'<span data-count="{count}">{text}</span>')
+
+
+@router.post("/delete-period")
+def delete_period(
+    request: Request,
+    date_from: str = Form(""),
+    date_to: str = Form(""),
+    account_id: str = Form(""),
+    confirm_text: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    """Loescht nur die Buchungen eines frei waehlbaren Zeitraums (optional auf ein Konto
+    eingegrenzt) - gleiche Absicherung wie "Alle Daten loeschen": Bestaetigungswort, danach
+    Sicherheits-Backup, erst dann die eigentliche Loeschung."""
+    wants_json = _wants_json(request)
+    safety_name = None
+
+    def fail(message: str, status_code: int = 400):
+        if wants_json:
+            return JSONResponse({"error": message, "safety_backup": safety_name}, status_code=status_code)
+        return templates.TemplateResponse(
+            request=request,
+            name="backup/result.html",
+            context=_page_context(
+                session, error=message, safety_backup=safety_name, report=None, period_delete=True
+            ),
+            status_code=status_code,
+        )
+
+    parsed = _parse_period_dates(date_from, date_to)
+    if parsed is None:
+        return fail("Bitte einen gültigen Zeitraum wählen (Von darf nicht nach Bis liegen).")
+    acc_id = int(account_id) if account_id else None
+    if confirm_text.strip().upper() != svc.CONFIRM_WORD:
+        return fail(
+            f"Bestätigung fehlt: zum Löschen der Buchungen muss das Wort „{svc.CONFIRM_WORD}“ eingegeben werden."
+        )
+    try:
+        safety_name = _write_safety_backup(session)
+        deleted = svc.delete_transactions_in_period(session, parsed[0], parsed[1], acc_id)
+    except svc.BackupError as exc:
+        return fail(str(exc))
+    if wants_json:
+        return JSONResponse({"deleted": deleted, "safety_backup": safety_name})
+    return templates.TemplateResponse(
+        request=request,
+        name="backup/result.html",
+        context=_page_context(
+            session,
+            period_delete=True,
+            period_deleted=deleted,
+            period_range=(parsed[0], parsed[1]),
+            error=None,
+            report=None,
+            safety_backup=safety_name,
         ),
     )

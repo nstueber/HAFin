@@ -97,10 +97,30 @@
       <main class="flex-1 pb-20 md:pb-8">
         <div class="mx-auto max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
           {% if active_nav in settings_children %}
+          {# Zurueck-Link: von der jeweiligen Bereichs-Übersichtsseite (Wurzelpfad, z.B. "/accounts")
+             geht es zur Einstellungen-Hauptseite; von einer tieferen Unterseite (Bearbeiten/Neu/
+             Anwenden, z.B. "/accounts/5/edit") zurueck zur Übersichtsseite des Bereichs statt
+             pauschal zu "Einstellungen" - rein anhand des aktuellen Pfads bestimmt, damit keine
+             Route diesen Link einzeln pflegen muss. #}
+          {% set settings_roots = {
+            'accounts': ('/accounts', 'Konten'),
+            'categories': ('/categories', 'Kategorien'),
+            'mapping_profiles': ('/mapping-profiles', 'Mapping-Profile'),
+            'rules': ('/categorization-rules', 'Kategorisierungsregeln'),
+            'budgets': ('/budgets', 'Budgets'),
+            'backup': ('/backup', 'Backup & Restore'),
+            'licenses': ('/settings/licenses', 'Lizenzinformationen'),
+          } %}
+          {% set root = settings_roots.get(active_nav) %}
+          {% if root and request.url.path != root[0] %}
+          {% set back_href, back_label = root %}
+          {% else %}
+          {% set back_href, back_label = ('/settings', 'Einstellungen') %}
+          {% endif %}
           <nav aria-label="Breadcrumb">
-            <a href="/settings" class="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition-colors hover:text-accent dark:text-gray-400 dark:hover:text-accent">
+            <a href="{{ back_href }}" class="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition-colors hover:text-accent dark:text-gray-400 dark:hover:text-accent">
               {{ arrow_left("h-4 w-4") }}
-              <span>Einstellungen</span>
+              <span>{{ back_label }}</span>
             </a>
           </nav>
           {% endif %}

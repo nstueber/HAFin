@@ -15,6 +15,7 @@ from app.models.category import (
     Category,
 )
 from app.models.category_budget import CategoryBudget
+from app.models.import_history import ImportHistoryEntry
 from app.models.mapping_profile import MappingProfile
 from app.models.transaction import Transaction, TransactionType
 from app.models.transaction_split import TransactionSplit
@@ -29,6 +30,7 @@ __all__ = [
     "CategorizationRule",
     "Category",
     "CategoryBudget",
+    "ImportHistoryEntry",
     "MappingProfile",
     "RULE_FIELDS",
     "RULE_MODES",

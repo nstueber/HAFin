@@ -12,8 +12,33 @@
   <p>
     Diese Kategorie ist {{ transaction_count }} Buchung{{ 'en' if transaction_count != 1 else '' }}
     zugewiesen. Eine Löschung entfernt die Zuweisung - die betroffenen Buchungen
-    werden unkategorisiert.
+    werden unkategorisiert, sofern unten keine Alternative gewählt wird.
   </p>
+  <div>
+    <label class="form-label" for="reassign-category-select">
+      Buchungen stattdessen folgender Kategorie zuordnen:
+    </label>
+    <select id="reassign-category-select" name="reassign_category_id" data-searchable class="form-input">
+      <option value="">– keine (unkategorisiert) –</option>
+      {% for group in alternative_groups %}
+      {% if group.children %}
+      <optgroup label="{{ group.name }}">
+        <option value="{{ group.id }}">{{ group.name }} (allgemein)</option>
+        {% for child in group.children %}
+        <option value="{{ child.id }}">{{ child.name }}</option>
+        {% endfor %}
+      </optgroup>
+      {% else %}
+      <option value="{{ group.id }}">{{ group.name }}</option>
+      {% endif %}
+      {% endfor %}
+    </select>
+    {% if not alternative_groups %}
+    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+      Keine andere Kategorie desselben Typs vorhanden.
+    </p>
+    {% endif %}
+  </div>
   {% endif %}
   {% if rule_count %}
   <p>
@@ -42,6 +67,7 @@
     type="button"
     class="btn-primary !bg-red-600 hover:!bg-red-700 focus-visible:!ring-red-600"
     hx-post="/categories/{{ category.id }}/delete"
+    {% if transaction_count %}hx-include="#reassign-category-select"{% endif %}
     hx-target="#categories-container"
     hx-swap="outerHTML"
   >

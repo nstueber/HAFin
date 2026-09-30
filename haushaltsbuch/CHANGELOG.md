@@ -6,6 +6,45 @@ Alle nennenswerten Änderungen an dieser App werden hier festgehalten. Das Forma
 
 ## [Unveröffentlicht]
 
+## [0.5.1] - 2026-09-30
+
+### Hinzugefügt
+- **Import-Historie:** jeder abgeschlossene CSV-Import wird protokolliert (Zeitpunkt, Konto,
+  importierte Datensätze, übersprungene Duplikate) - ausklappbarer Abschnitt unterhalb des
+  Import-Formulars, die letzten 20 Einträge insgesamt.
+- **Erkennung fehlender Buchungen bei erneutem Import:** liegen im Zeitraum der gerade
+  importierten Datei bereits Buchungen in der Datenbank, die in der Datei selbst kein
+  Gegenstück haben, werden sie im Import-Ergebnis als eigener, rein informativer Abschnitt
+  „Fehlende Buchungen des gleichen Zeitraums aus früherem Import“ aufgelistet.
+- **Buchungen eines Zeitraums löschen** (Einstellungen → Backup & Restore): eigene, gezieltere
+  Löschfunktion als „Alle Daten löschen“ - Zeitraum frei wählbar (Schnellauswahl Tag/Woche/
+  Monat/Jahr oder freies Von/Bis), optional auf ein Konto eingegrenzt, Konten/Kategorien/Regeln/
+  Budgets bleiben unverändert. Gleiche Absicherung wie „Alle Daten löschen“ (Bestätigungswort,
+  automatisches Sicherheits-Backup davor).
+- **Import-Historie zeigt den Buchungszeitraum:** zusätzlich zum Zeitpunkt jetzt auch ältestes bis
+  neuestes Buchungsdatum der importierten Zeilen (z. B. „12.01.2026 – 09.02.2026“). Vor dieser
+  Änderung entstandene Einträge zeigen dafür „–“.
+- **Importierte Buchungen ansehen & direkt löschen:** die „Importiert“-Kachel im Import-Ergebnis
+  ist jetzt (wie schon die Duplikate-Kachel) klickbar und öffnet eine Liste aller in diesem Lauf
+  neu angelegten Buchungen - mit Löschen-Button pro Zeile, falls sich eine Zeile als fehlerhaft
+  herausstellt, ohne erst in die Buchungsliste wechseln zu müssen.
+
+### Geändert
+- **Kategorie löschen:** beim Löschen einer noch verwendeten Kategorie lässt sich optional eine
+  alternative Kategorie desselben Typs (Einnahme/Ausgabe) wählen, der die betroffenen Buchungen
+  stattdessen zugeordnet werden - ohne Auswahl bleiben sie wie bisher unkategorisiert.
+
+### Behoben
+- **„Zurück"-Link in Einstellungen-Unterseiten:** führte auf Bearbeiten-/Wizard-Seiten (z. B.
+  Konto/Kategorie bearbeiten, Regeln anwenden) immer pauschal zu „Einstellungen" statt zur
+  jeweiligen Übersichtsseite (Konten, Kategorien, ...) - zeigt jetzt korrekt auf die unmittelbar
+  vorherige Übersichtsseite des Bereichs, nur auf der Übersichtsseite selbst weiterhin auf
+  „Einstellungen".
+- **Import-Historie zu breit:** der Abschnitt lief optisch über den Rand des Import-Fensters
+  hinaus - hat jetzt dieselbe Breite wie das Formular darüber.
+- **Kategorie-löschen-Dialog mit Alternativ-Auswahl zu klein:** Inhalt wirkte abgeschnitten -
+  nutzt jetzt dieselbe breitere Modal-Klasse wie andere tabellenlastige Dialoge.
+
 ## [0.4.1] - 2026-09-23
 
 Rein technische Verbesserungen ohne sichtbare Änderung am Funktionsumfang.

@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 
 from app.database import engine, get_session
 from app.models import (
+    BARGELD_KEY,
     CATEGORY_TYPE_EXPENSE,
     CATEGORY_TYPES,
     SYSTEM_CATEGORY_DEFAULT_NAMES,
@@ -16,6 +17,7 @@ from app.models import (
     CategoryBudget,
     Transaction,
 )
+from app.services.category_tree import category_groups
 from app.services.category_types import (
     TYPE_LABELS,
     backfill_category_types,
@@ -240,6 +242,16 @@ def delete_category_confirm(
         session.exec(select(CategoryBudget).where(CategoryBudget.category_id == category_id)).first()
         is not None
     )
+    alternative_groups = []
+    if transaction_count:
+        by_id = {c.id: c for c in session.exec(select(Category)).all()}
+        target_type = effective_type(category, by_id)
+        for group in category_groups(session, exclude_system_keys=(UMBUCHUNG_KEY, BARGELD_KEY)):
+            if group["id"] == category_id:
+                continue
+            if effective_type(by_id.get(group["id"]), by_id) != target_type:
+                continue
+            alternative_groups.append(group)
     return templates.TemplateResponse(
         request=request,
         name="categories/_delete_confirm.html",
@@ -249,13 +261,17 @@ def delete_category_confirm(
             "transaction_count": transaction_count,
             "rule_count": rule_count,
             "has_budget": has_budget,
+            "alternative_groups": alternative_groups,
         },
     )
 
 
 @router.post("/{category_id}/delete", response_class=HTMLResponse)
 def delete_category(
-    request: Request, category_id: int, session: Session = Depends(get_session)
+    request: Request,
+    category_id: int,
+    reassign_category_id: str = Form(""),
+    session: Session = Depends(get_session),
 ) -> HTMLResponse:
     category = session.get(Category, category_id)
     if category is None:
@@ -265,6 +281,21 @@ def delete_category(
         # trotzdem serverseitig verweigern, falls doch direkt angefragt.
         return Response(status_code=403)
 
+    # Alternative Zielkategorie fuer die betroffenen Buchungen (statt "unkategorisiert") - nur
+    # gueltig, wenn sie existiert, kein Systemkategorie und vom selben Kategorie-Typ ist wie die
+    # zu loeschende Kategorie (serverseitig erneut geprueft, das Dropdown bietet ohnehin nur
+    # solche an); jeder andere/fehlerhafte Wert wird still ignoriert (Fallback: unkategorisiert).
+    reassign_category = None
+    if reassign_category_id:
+        try:
+            candidate = session.get(Category, int(reassign_category_id))
+        except ValueError:
+            candidate = None
+        if candidate is not None and candidate.id != category_id and not candidate.system_key:
+            by_id = {c.id: c for c in session.exec(select(Category)).all()}
+            if effective_type(candidate, by_id) == effective_type(category, by_id):
+                reassign_category = candidate
+
     # Unterkategorien werden zu eigenstaendigen Oberkategorien, statt die
     # Loeschung zu blockieren oder sie mit zu loeschen.
     children = session.exec(select(Category).where(Category.parent_id == category_id)).all()
@@ -273,12 +304,13 @@ def delete_category(
         child.type = category.type or CATEGORY_TYPE_EXPENSE  # behaelt den bisher geerbten Typ
         session.add(child)
 
-    # Zugeordnete Buchungen werden unkategorisiert, nicht mitgeloescht.
+    # Zugeordnete Buchungen werden der Alternative zugeordnet, falls gewaehlt - sonst wie bisher
+    # unkategorisiert (nicht geloescht).
     affected_txns = session.exec(
         select(Transaction).where(Transaction.category_id == category_id)
     ).all()
     for txn in affected_txns:
-        txn.category_id = None
+        txn.category_id = reassign_category.id if reassign_category else None
         session.add(txn)
 
     # Regeln mit dieser Ziel-Kategorie und ein Budget fuer sie ergeben ohne die Kategorie keinen Sinn.

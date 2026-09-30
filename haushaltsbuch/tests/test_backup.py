@@ -194,3 +194,74 @@ def test_reset_all_deletes_everything_but_keeps_system_categories(session):
     remaining = session.exec(select(Category)).all()
     assert len(remaining) == 1
     assert remaining[0].id == umbuchung.id
+
+
+# ------------------------------------------------------ delete_transactions_in_period (Runde 20)
+
+
+def _account(session, iban="DE00"):
+    acc = Account(iban=iban, display_name=iban)
+    session.add(acc)
+    session.commit()
+    session.refresh(acc)
+    return acc
+
+
+def _txn(session, account, day, amount, counter_transaction_id=None, transaction_type=None):
+    t = Transaction(
+        account_id=account.id, booking_date=day, payee="x", amount=amount,
+        transaction_type=transaction_type or TransactionType.AUSGANG,
+        counter_transaction_id=counter_transaction_id,
+    )
+    session.add(t)
+    session.commit()
+    session.refresh(t)
+    return t
+
+
+def test_count_and_delete_transactions_in_period_respects_account_filter(session):
+    acc1 = _account(session, "DE01")
+    acc2 = _account(session, "DE02")
+    _txn(session, acc1, date(2026, 9, 5), -10.0)
+    _txn(session, acc1, date(2026, 9, 25), -20.0)
+    _txn(session, acc2, date(2026, 9, 10), -30.0)
+    _txn(session, acc1, date(2026, 8, 31), -1.0)  # ausserhalb des Zeitraums
+
+    assert svc.count_transactions_in_period(session, date(2026, 9, 1), date(2026, 9, 30), None) == 3
+    assert svc.count_transactions_in_period(session, date(2026, 9, 1), date(2026, 9, 30), acc1.id) == 2
+
+    deleted = svc.delete_transactions_in_period(session, date(2026, 9, 1), date(2026, 9, 30), acc1.id)
+
+    assert deleted["transactions"] == 2
+    remaining = {t.booking_date for t in session.exec(select(Transaction)).all()}
+    assert remaining == {date(2026, 9, 10), date(2026, 8, 31)}
+
+
+def test_delete_transactions_in_period_unlinks_surviving_transfer_partner(session):
+    acc1 = _account(session, "DE01")
+    acc2 = _account(session, "DE02")
+    inside = _txn(session, acc1, date(2026, 9, 5), -100.0, transaction_type=TransactionType.UMBUCHUNG)
+    outside = _txn(session, acc2, date(2026, 10, 5), 100.0, transaction_type=TransactionType.UMBUCHUNG)
+    inside.counter_transaction_id = outside.id
+    outside.counter_transaction_id = inside.id
+    outside.category_id = 999  # simuliert die feste "Umbuchung"-Kategorie
+    session.add(inside)
+    session.add(outside)
+    session.commit()
+
+    inside_id, outside_id = inside.id, outside.id
+    svc.delete_transactions_in_period(session, date(2026, 9, 1), date(2026, 9, 30), None)
+
+    # session.get() wuerde hier ObjectDeletedError werfen (das Test selbst haelt noch eine
+    # abgelaufene Python-Referenz auf "inside") - eine frische Query gibt stattdessen sauber [] zurueck.
+    assert session.exec(select(Transaction).where(Transaction.id == inside_id)).first() is None
+    survivor = session.exec(select(Transaction).where(Transaction.id == outside_id)).one()
+    assert survivor.counter_transaction_id is None
+    assert survivor.transaction_type == TransactionType.EINGANG
+    assert survivor.category_id is None
+
+
+def test_delete_transactions_in_period_empty_range_is_a_no_op(session):
+    _account(session, "DE01")
+    deleted = svc.delete_transactions_in_period(session, date(2026, 9, 1), date(2026, 9, 30), None)
+    assert deleted == {"transactions": 0, "transaction_splits": 0}

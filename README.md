@@ -125,11 +125,13 @@ docker-compose.yml            schneller Dev-Loop ohne Supervisor
 .github/workflows/release.yml Multi-Arch-Build + GHCR-Publish bei Tag vX.Y.Z
 haushaltsbuch/                die Home-Assistant-App
   config.yaml Dockerfile run.sh README.md DOCS.md CHANGELOG.md icon.png logo.png
-  requirements.txt
+  requirements.txt              Laufzeit-Abhängigkeiten (im Docker-Image installiert)
+  requirements-dev.txt pytest.ini  nur für Unit-Tests (siehe "Tests"), NICHT im Image
+  tests/                         pytest-Unit-Tests der Service-Schicht
   app/
-    models/       SQLModel-Datenmodelle (Konten, Kategorien, Mapping-Profile, Transaktionen)
+    models/       SQLModel-Datenmodelle (Konten, Kategorien, Mapping-Profile, Transaktionen, Import-Historie)
     routers/      accounts, transactions, categories, categorization_rules, budgets, mapping_profiles, imports (CSV-Import), backup, settings
-    services/     CSV-Erkennungslogik + Parsing, Backup (Export/Import/Reset), Kategorisierungsregeln, Kategorienbaum, Kategorie-Typ
+    services/     CSV-Erkennungslogik + Parsing, Backup (Export/Import/Reset/Zeitraum-Löschung), Kategorisierungsregeln, Kategorienbaum, Kategorie-Typ, Import-Historie
     templates/    Jinja2-Templates (inkl. _icons.html mit Heroicons-SVG-Makros)
     static/       JS (htmx, Theme-Toggle), CSS (input.css = Quelle, app.css = generiert)
     database.py   DB-Engine & Session, leichte Auto-Migration für neue Spalten
@@ -230,6 +232,45 @@ Formular mitgeführt, und die Antwort entfernt die erfolgreich importierten
 Zeilen per eingebettetem `<script>` clientseitig aus der Tabelle, statt sie
 komplett neu vom Server zu laden.
 
+**Importierte Buchungen ansehen & sofort löschen:** analog zur Duplikate-Kachel ist auch die
+„Importiert"-Kachel klickbar (nur wenn `imported_txns` nicht leer ist) und öffnet einen eigenen
+`.modal-wide`-Dialog mit allen in diesem Lauf neu angelegten Buchungen. Jede Zeile hat einen
+Löschen-Button, der bewusst **denselben** Endpunkt (`POST /transactions/{id}/delete`) wie die
+Buchungsliste verwendet, statt einen eigenen zu bauen: dessen Antwort besteht ausschließlich aus
+Out-of-Band-Fragmenten (`<tr id="transaction-row-{id}" hx-swap-oob="delete">`, siehe Buchungen-
+Abschnitt weiter unten), die htmx unabhängig vom `hx-target` per ID **irgendwo im Dokument**
+anwenden - die Zeile im Import-Dialog trägt deshalb absichtlich dieselbe ID wie in der
+Buchungsliste, und der `hx-target` selbst zeigt nur auf ein leeres, unsichtbares Platzhalter-Div.
+So bleibt die Löschlogik (inkl. Umbuchungs-Entkopplung, Bargeld-Split-Cascade) an einer einzigen
+Stelle im Code.
+
+**Import-Historie:** jeder abgeschlossene Import (`run_import()`, nicht der Force-Import einer
+bereits laufenden Vorschau) schreibt über `record_import()` (`app/services/import_history.py`)
+einen Eintrag in `ImportHistoryEntry` (Zeitpunkt, Konto - als reiner Textname, bewusst OHNE
+Fremdschlüssel, damit ein Eintrag auch nach dem Löschen des Kontos als Beleg bestehen bleibt -,
+importierte/übersprungene Anzahl). `record_import()` kürzt danach **insgesamt über alle Konten
+hinweg** auf `MAX_ENTRIES = 20`: die IDs der 20 neuesten werden per `ORDER BY imported_at DESC
+LIMIT 20` ermittelt, alles andere in einem `DELETE ... WHERE id NOT IN (...)` entfernt - kein
+scheduled Cleanup-Job nötig, die Kürzung passiert inline bei jedem neuen Eintrag. Anzeige als
+ausklappbares `<details>` (dasselbe Muster wie die Umbuchungs-Vorschläge auf der Buchungsseite)
+unterhalb des Import-Formulars.
+
+**Fehlende Buchungen bei erneutem Import:** `_find_missing_bookings()` in `imports.py` bestimmt
+zunächst den von der aktuellen Datei abgedeckten Zeitraum als Min/Max des Buchungsdatums **ihrer
+gültigen (fehlerfreien) Zeilen** - rein aus der Datei selbst, ohne irgendeinen früheren Import zu
+kennen oder zu speichern. Anschließend werden alle bestehenden Buchungen des Kontos in genau
+diesem Zeitraum geladen und mit derselben Duplikat-Schlüssel-Tupel (Buchungsdatum, Betrag,
+Auftraggeber/Empfänger, Verwendungszweck) wie die reguläre Duplikaterkennung gegen **alle**
+gültigen Zeilen der Datei abgeglichen (nicht nur gegen die neu importierten - eine als Duplikat
+übersprungene Zeile hat ja ein Gegenstück und ist deshalb nicht "fehlend"). Was übrig bleibt, wird
+rein informativ aufgelistet. Bei **überlappenden Zeiträumen über mehrere Importe hinweg** ergibt
+sich daraus automatisch das richtige Verhalten, ohne dass frühere Importe irgendwo vermerkt werden
+müssten: der geprüfte Zeitraum wird bei jedem Aufruf frisch aus der jeweils aktuellen Datei
+bestimmt (kann von Import zu Import enger oder weiter sein), und der Datenbankstand selbst trägt
+implizit bereits alle vorherigen Importe - ein zweiter Import mit demselben oder einem
+erweiterten Zeitraum sieht deshalb automatisch auch die Buchungen aus dem ersten Import als
+"vorhanden", nicht nur die soeben neu hinzugekommenen.
+
 ## Navigation (Hauptmenü + Einstellungen-Hub)
 
 Das Hauptmenü hat nur vier Einträge (Übersicht, Buchungen, Import, Einstellungen) - in allen drei
@@ -243,9 +284,15 @@ unverändert.
 
 **Aktiv-Zustand & Zurück-Link zentral in `base.html`:** die Liste `settings_children` (`active_nav`-Schlüssel
 `accounts`, `categories`, `mapping_profiles`, `rules`, `budgets`, `backup`, `licenses`) markiert "Einstellungen" als aktiv (`current_nav`) und blendet
-über dem Inhalt automatisch den Link "← Einstellungen" ein - für jede Seite, die eines dieser `active_nav`-Werte setzt
-(auch Bearbeiten-/Wizard-/Ergebnis-/Fehlerseiten). Eine neue Unterseite der Einstellungen braucht also nur den passenden
-`active_nav` (und einen Eintrag in `settings_children`, falls es ein neuer Schlüssel ist) plus kachel im Hub.
+über dem Inhalt automatisch einen Zurück-Link ein - für jede Seite, die eines dieser `active_nav`-Werte setzt
+(auch Bearbeiten-/Wizard-/Ergebnis-/Fehlerseiten). Das Ziel dieses Links wird rein aus dem aktuellen Pfad
+bestimmt (Dict `settings_roots`, Wurzelpfad + Label je Bereich, z.B. `accounts` → `('/accounts', 'Konten')`):
+auf der Bereichs-Übersichtsseite selbst (Pfad == Wurzelpfad) führt er wie bisher zu "← Einstellungen", auf
+einer tieferliegenden Unterseite (z.B. `/accounts/5/edit`, `/categorization-rules/apply`) stattdessen zur
+Übersichtsseite des jeweiligen Bereichs ("← Konten" usw.) - vorher war es dort fälschlich ebenfalls "←
+Einstellungen" (Bug, siehe CHANGELOG). Eine neue Unterseite der Einstellungen braucht deshalb **keinen**
+eigenen Code für diesen Link, nur den passenden `active_nav` (und einen Eintrag in `settings_children` plus
+`settings_roots`, falls es ein neuer Bereichs-Schlüssel ist) plus Kachel im Hub.
 Mobil (Bottom-Nav) haben vier Einträge wieder Platz für Beschriftungen (auch bei 320px ohne Abschneiden geprüft).
 
 ### DEV-Buildnummer
@@ -308,7 +355,18 @@ mit den konkreten Konsequenzen gezeigt:
 - Hat die Kategorie Unterkategorien, werden diese beim Löschen zu
   eigenständigen Oberkategorien (nicht mitgelöscht, nicht blockiert).
 - Sind der Kategorie Buchungen zugeordnet, wird deren Anzahl angezeigt - beim
-  Bestätigen werden genau diese Buchungen unkategorisiert (nicht mitgelöscht).
+  Bestätigen werden genau diese Buchungen unkategorisiert (nicht mitgelöscht),
+  **außer** es wird eine alternative Kategorie gewählt (durchsuchbares Tom-Select-Dropdown,
+  nur eingeblendet wenn `transaction_count > 0`): Das Dropdown bietet ausschließlich
+  Kategorien **desselben Kategorie-Typs** (`effective_type()` der zu löschenden gegen jede
+  Kandidatin verglichen) und schließt Systemkategorien sowie die zu löschende Kategorie selbst
+  aus (`category_groups(session, exclude_system_keys=(UMBUCHUNG_KEY, BARGELD_KEY))`, danach
+  nach Typ gefiltert). Der Löschen-Button sendet den gewählten Wert per `hx-include` mit (nur
+  gesetzt, wenn das Dropdown überhaupt existiert - sonst würde htmx bei jedem Löschen einer
+  unbenutzten Kategorie eine harmlose, aber unnötige Konsolenwarnung "selector returned no
+  matches" ausgeben). Serverseitig wird die Auswahl erneut validiert (existiert, kein
+  Systemkategorie, `id != category_id`, gleicher Typ); ein manipulierter/ungültiger Wert wird
+  still ignoriert (Fallback: wie bisher unkategorisiert), nie ein Fehler.
 - Die automatisch angelegten Systemkategorien "Umbuchung" und "Bargeld" sind
   weder löschbar (kein Löschen-Button, serverseitig 403) noch umbenennbar
   (Namensfeld im Bearbeiten-Formular deaktiviert mit Hinweis "Systemkategorie,
@@ -635,6 +693,23 @@ Download auf der Ergebnisseite), dann `reset_all()` in einer Transaktion. Gelös
 Systemkategorien (deren Oberkategorie wird gelöst). Die Bestätigungs-Box ist als Macro `danger_panel`
 (`templates/backup/_danger.html`) für beide Stellen gemeinsam; das Prüfen des Worts übernimmt
 `hafinConfirmWordOk()` in `enhancements.js`. Bei leerer Datenbank bleibt der Button deaktiviert.
+
+**Buchungen eines Zeitraums löschen:** eigene, gezieltere Karte direkt darunter (`POST
+/backup/delete-period`) - anders als der Komplett-Reset bleiben Konten, Kategorien, Mapping-Profile,
+Regeln und Budgets unberührt, nur `delete_transactions_in_period(session, date_from, date_to,
+account_id)` (`app/services/backup.py`) wird ausgeführt. Zeitraum: zwei `<input type="date">` (Von/Bis),
+plus eine Schnellauswahl (Segmented-Control Tag/Woche/Monat/Jahr + ein Referenzdatum) die die beiden
+Felder per **reiner Lokalzeit-JS-Arithmetik** befüllt (bewusst kein `toISOString()` - das würde bei der
+UTC-Umrechnung je nach Zeitzone auf den Vor-/Folgetag verschieben; stattdessen nur `getFullYear()`/
+`getMonth()`/`getDate()` auf lokalen `Date`-Objekten). Live-Vorschau der betroffenen Anzahl bei jeder
+Änderung von Von/Bis/Konto über `hx-trigger="change"` gegen `GET /backup/delete-period/preview`, das nur
+den Inhalt des `danger_panel`-`loss_id`-Elements zurückgibt (nicht das ganze Panel - das Bestätigungswort-
+Feld bleibt dadurch beim Ändern des Zeitraums erhalten statt neu gerendert zu werden); die Zahl steckt
+zusätzlich in einem `data-count`-Attribut, das ein `htmx:afterSwap`-Listener ausliest, um den
+Löschen-Button zusammen mit der Wortprüfung freizuschalten. Eine im Zeitraum liegende Umbuchung, deren
+Gegenbuchung außerhalb liegt (bleibt bestehen), wird auf der überlebenden Seite sauber entkoppelt
+(`counter_transaction_id`/`transaction_type`/`category_id` zurückgesetzt - dieselbe Logik wie der manuelle
+"Verknüpfung aufheben"-Button in `transactions.py`), damit keine tote Referenz übrig bleibt.
 
 **Toleranz**: fehlende optionale Felder (z.B. `comment` in alten Backups) bekommen Defaults, unbekannte Felder
 werden ignoriert - beides als Warnung im Report. Pflichtfelder, ungültige Werte, defekte Referenzen,

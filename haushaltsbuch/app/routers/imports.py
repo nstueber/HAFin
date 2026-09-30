@@ -9,6 +9,7 @@ from app.models import Account, MappingProfile, Transaction, TransactionType
 from app.services.category_tree import categories_by_id
 from app.services.category_types import category_sign_hint
 from app.services.csv_detection import parse_from_header, parse_transaction_rows
+from app.services.import_history import record_import, recent_imports
 from app.services.rules import apply_rule_to_transaction, find_matching_rule, load_rules
 from app.templating import templates
 
@@ -17,6 +18,48 @@ router = APIRouter(prefix="/import", tags=["import"])
 
 def _sign_mismatch(txn: Transaction, cats_by_id: dict) -> bool:
     return category_sign_hint(txn.amount, txn.category_id, cats_by_id) is not None
+
+
+def _find_missing_bookings(
+    session: Session,
+    account_id: int,
+    period_start: date | None,
+    period_end: date | None,
+    imported_row_keys: set,
+) -> list[dict]:
+    """Buchungen des Kontos, die im abgedeckten Zeitraum der Importdatei bereits in der DB stehen,
+    aber in der Datei selbst kein Gegenstueck haben (umgekehrte Richtung der normalen
+    Duplikaterkennung: "bestehende Buchung ohne Zeile in der neuen Datei" statt "neue Zeile ohne
+    bestehende Buchung"). Rein informativ, keine Aktion. Der Zeitraum wird bei JEDEM Import neu aus
+    der aktuellen Datei bestimmt (kleinstes/groesstes Buchungsdatum ihrer gueltigen Zeilen) - bei
+    mehreren, sich ueberlappenden Importen fuer dasselbe Konto verengt oder erweitert sich der
+    geprüfte Zeitraum dadurch automatisch von Import zu Import, ohne dass fruehere Importe
+    irgendwo vermerkt werden muessten; der DB-Stand selbst traegt bereits alle vorherigen Importe.
+    """
+    if period_start is None or period_end is None:
+        return []
+    existing = session.exec(
+        select(Transaction).where(
+            Transaction.account_id == account_id,
+            Transaction.booking_date >= period_start,
+            Transaction.booking_date <= period_end,
+        )
+    ).all()
+    missing = []
+    for txn in existing:
+        key = (txn.booking_date, txn.amount, txn.payee, txn.purpose)
+        if key not in imported_row_keys:
+            missing.append(
+                {
+                    "booking_date": txn.booking_date,
+                    "payee": txn.payee,
+                    "purpose": txn.purpose,
+                    "amount": txn.amount,
+                    "existing_transaction_id": txn.id,
+                }
+            )
+    missing.sort(key=lambda m: m["booking_date"])
+    return missing
 
 
 def _form_context(
@@ -36,6 +79,7 @@ def _form_context(
         "form_error": form_error,
         "selected_account_id": selected_account_id,
         "selected_profile_id": selected_profile_id,
+        "history": recent_imports(session),
     }
 
 
@@ -117,6 +161,7 @@ async def run_import(
     auto_suggested = 0  # Regel im Modus "nur vorschlagen"
     duplicates: list[dict] = []
     errors: list[dict] = []
+    imported_txns: list[Transaction] = []
     # Regeln (Prioritaetsreihenfolge) einmal laden; sie gelten nur fuer NEU importierte Buchungen -
     # Duplikate werden weiter oben uebersprungen und bestehende Buchungen nie angefasst.
     rules = load_rules(session)
@@ -170,8 +215,29 @@ async def run_import(
                 if _sign_mismatch(new_txn, cats_by_id):
                     auto_mismatch += 1
         session.add(new_txn)
+        imported_txns.append(new_txn)
         imported += 1
 
+    # Fehlende Buchungen erkennen, BEVOR die neuen Zeilen committet werden: "existing" (DB) soll
+    # hier noch den Stand VOR diesem Import widerspiegeln, nicht die soeben selbst eingefuegten
+    # Zeilen doppelt mitzaehlen (waere ohnehin identisch, aber so ist die Reihenfolge eindeutig).
+    valid_dates = [p.booking_date for p in parsed_rows if p.error is None]
+    period_start = min(valid_dates) if valid_dates else None
+    period_end = max(valid_dates) if valid_dates else None
+    imported_row_keys = {
+        (p.booking_date, p.amount, p.payee, p.purpose) for p in parsed_rows if p.error is None
+    }
+    missing_bookings = _find_missing_bookings(session, account_id, period_start, period_end, imported_row_keys)
+
+    record_import(
+        session,
+        account_id=account_id,
+        account_name=account.display_name,
+        imported_count=imported,
+        duplicate_count=len(duplicates),
+        period_start=period_start,
+        period_end=period_end,
+    )
     session.commit()
 
     return templates.TemplateResponse(
@@ -180,6 +246,7 @@ async def run_import(
         context={
             "title": "CSV-Import",
             "active_nav": "import",
+            "missing_bookings": missing_bookings,
             "account": account,
             "profile": profile,
             "total_rows": len(parsed_rows),
@@ -188,6 +255,7 @@ async def run_import(
             "auto_suggested": auto_suggested,
             "auto_mismatch": auto_mismatch,
             "duplicates": duplicates,
+            "imported_txns": imported_txns,
             "errors": errors,
         },
     )
