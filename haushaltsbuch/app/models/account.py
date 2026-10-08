@@ -14,4 +14,6 @@ class Account(SQLModel, table=True):
     # Reserviert für spätere Nutzung: optionaler Startsaldo je Konto.
     # Aktuell nicht befuellt/verwendet.
     starting_balance: Optional[float] = None
+    # Standard-Mapping-Profil dieses Kontos (optional): wird beim CSV-Import automatisch verwendet
+    default_mapping_profile_id: Optional[int] = Field(default=None, foreign_key="mappingprofile.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)

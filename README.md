@@ -130,8 +130,8 @@ haushaltsbuch/                die Home-Assistant-App
   tests/                         pytest-Unit-Tests der Service-Schicht
   app/
     models/       SQLModel-Datenmodelle (Konten, Kategorien, Mapping-Profile, Transaktionen, Import-Historie)
-    routers/      accounts, transactions, categories, categorization_rules, budgets, mapping_profiles, imports (CSV-Import), backup, settings
-    services/     CSV-Erkennungslogik + Parsing, Backup (Export/Import/Reset/Zeitraum-Löschung), Kategorisierungsregeln, Kategorienbaum, Kategorie-Typ, Import-Historie
+    routers/      accounts, transactions, categories, categorization_rules, budgets, mapping_profiles, imports (CSV-Import), recurring (wiederkehrende Zahlungen), backup, settings
+    services/     CSV-Erkennungslogik + Parsing, Backup (Export/Import/Reset/Zeitraum-Löschung), Kategorisierungsregeln, Kategorienbaum, Kategorie-Typ, Import-Historie, Text-Ähnlichkeit (similarity), Erkennung wiederkehrender Zahlungen (recurring)
     templates/    Jinja2-Templates (inkl. _icons.html mit Heroicons-SVG-Makros)
     static/       JS (htmx, Theme-Toggle), CSS (input.css = Quelle, app.css = generiert)
     database.py   DB-Engine & Session, leichte Auto-Migration für neue Spalten
@@ -197,6 +197,27 @@ Mapping-Profil hinterlegten Einstellungen geparst (inkl. `header_row_index`
 zum Überspringen einer Präambel); passen die dort erwarteten Spaltennamen
 nicht zur hochgeladenen Datei, wird das mit einer klaren Fehlermeldung
 abgebrochen, statt stillschweigend leere/falsche Daten zu importieren.
+
+**Standard-Mapping je Konto:** ein Mapping gehört in der Praxis dauerhaft zu genau einem Konto, deshalb
+hat `Account` das optionale Feld `default_mapping_profile_id` (Konto bearbeiten → „Mapping-Profil“).
+Ist es gesetzt, entfällt im Import-Formular die Mapping-Auswahl: `imports/new.html` blendet sie per kleinem
+Inline-Skript aus (`data-defaults` = Konto-ID → Profil-ID, wie `account_defaults` aus `_form_context()`)
+und zeigt stattdessen „Mapping-Profil: X (Standard dieses Kontos) · Anderes Mapping verwenden“ - der Link
+klappt die Auswahl für **diesen einen Import** auf. Serverseitig entscheidet `run_import()`: ein
+ausdrücklich gesendetes `mapping_profile_id` hat Vorrang, sonst gilt der Konto-Standard; fehlt beides,
+kommt eine klare Fehlermeldung. Hat das Konto noch **keinen** Standard, wird nach dem Import die getroffene
+Wahl als Standard gespeichert (Hinweis im Ergebnis); ein abweichendes Einmal-Profil überschreibt einen
+vorhandenen Standard nie. Wird ein Mapping-Profil gelöscht, verlieren Konten mit diesem Standard die
+Zuordnung (kein toter Verweis). Backup: die Zuordnung steckt als optionaler Verweis
+`default_mapping_profile` im Konto-Datensatz und wird nur aufgelöst, wenn die Profile mitimportiert werden.
+
+*Migration (einmalig, zwei Schritte mit je eigenem Merker in `app_meta`):* `backfill_default_mapping_profiles()`
+(`services/import_history.py`, beim Start nach dem Update) (1) setzt je Konto das laut Import-Historie verwendete
+Profil, **wenn es eindeutig ist** - `ImportHistoryEntry` kennt das Profil aber erst seit 0.6.0
+(`mapping_profile_id`), Einträge aus 0.5.x enthalten keines; (2) existiert im gesamten System **genau ein**
+Mapping-Profil, bekommen alle Konten ohne Zuordnung dieses (keine Alternative, also kein Raten). Bei mehreren
+Profilen bleibt die Zuordnung leer und entsteht beim nächsten Import des Kontos (siehe oben). Die Schritte haben
+getrennte Merker, damit Schritt 2 auch in Datenbanken läuft, in denen Schritt 1 schon ohne Ergebnis lief.
 
 Jede Zeile wird einzeln behandelt:
 - Buchungsdatum/Betrag lassen sich nicht parsen → Zeile wird übersprungen und
@@ -273,7 +294,7 @@ erweiterten Zeitraum sieht deshalb automatisch auch die Buchungen aus dem ersten
 
 ## Navigation (Hauptmenü + Einstellungen-Hub)
 
-Das Hauptmenü hat nur vier Einträge (Übersicht, Buchungen, Import, Einstellungen) - in allen drei
+Das Hauptmenü hat fünf Einträge (Übersicht, Buchungen, Import, Wiederkehrende Zahlungen - mobil/Icon-Rail „Abos“ -, Einstellungen) - in allen drei
 Varianten in `base.html` (Desktop-Sidebar, Tablet-Icon-Rail, mobile Bottom-Nav) aus denselben
 `nav_item(...)`-Aufrufen. **"Einstellungen" ist ein normaler Eintrag ohne Flyout/Untermenü** und führt auf die Hub-Seite
 `GET /settings` (`app/routers/settings.py`, `templates/settings/index.html`): Kacheln (Icon + Titel +
@@ -293,7 +314,9 @@ einer tieferliegenden Unterseite (z.B. `/accounts/5/edit`, `/categorization-rule
 Einstellungen" (Bug, siehe CHANGELOG). Eine neue Unterseite der Einstellungen braucht deshalb **keinen**
 eigenen Code für diesen Link, nur den passenden `active_nav` (und einen Eintrag in `settings_children` plus
 `settings_roots`, falls es ein neuer Bereichs-Schlüssel ist) plus Kachel im Hub.
-Mobil (Bottom-Nav) haben vier Einträge wieder Platz für Beschriftungen (auch bei 320px ohne Abschneiden geprüft).
+Mobil (Bottom-Nav) haben die fünf Einträge noch Platz für Beschriftungen (bei 360px ohne Abschneiden/horizontales Scrollen geprüft).
+
+Der Eintrag „Wiederkehrende Zahlungen“ trägt einen **Hinweis-Badge** (Anzahl offener Betragsänderungen/ausbleibender Zahlungen, `nav_item(..., badge=...)`). `recurring_attention_count()` (`templating.py`, Jinja-Global) führt die Erkennung aus, ist aber kurz zwischengespeichert (Buchungs-Fingerprint + Tag + 60 s TTL; Ignorieren leert den Cache sofort), damit nicht jeder Seitenaufruf alle Buchungen neu auswertet.
 
 ### DEV-Buildnummer
 
@@ -803,6 +826,58 @@ Zeiträume). Die Felder brauchen `!w-auto` gegen `.form-input`s eigenes
 `w-full`, sonst sprengt ein einzelnes Datumsfeld als Flex-Kind die ganze
 Filterzeile und der zugehörige Label-Text rutscht in die nächste Zeile.
 
+## Wiederkehrende Zahlungen (Abo-Tracking)
+
+Eigene Seite `GET /recurring` (`app/routers/recurring.py`, Erkennung in `app/services/recurring.py`),
+rein berechnet aus den vorhandenen Buchungen - es werden keine Reihen gespeichert, nur die Ignorier-Liste
+(`RecurringIgnore`). Die Text-Ähnlichkeit (`difflib`) liegt in `services/similarity.py` und wird von
+„Ähnliche Zahlungen“ (Buchungsdetails) und hier gemeinsam genutzt.
+
+**Erkennung** (je Konto, Einnahmen/Ausgaben getrennt, Umbuchungen ausgenommen):
+1. *Gruppieren nach Auftraggeber:* normalisierter Name (Kleinbuchstaben, ohne Ziffern/Satzzeichen), dann
+   Zusammenführen ähnlicher Namen ab Ähnlichkeit **0,8** (`PAYEE_THRESHOLD`; strenger als die 0,6 der
+   Verwendungszweck-Suche, weil nur kurze Namen verglichen werden).
+2. *Reihen bilden:* eine Buchung gehört zur Reihe, wenn ihr Betrag höchstens `max(2 €, 25 %)` vom letzten
+   Betrag der Reihe abweicht (bewusst weiter als die Preisänderungs-Schwelle, damit eine Preiserhöhung in
+   derselben Reihe bleibt).
+3. *Rhythmus:* Median der Abstände zwischen aufeinanderfolgenden Buchungen - wöchentlich 5-9 Tage, monatlich
+   26-35, vierteljährlich 80-100, jährlich 350-380 - und mindestens **75 %** aller Abstände müssen im
+   Fenster liegen (ein ausgelassener Monat verwirft die Reihe nicht, Zufallstreffer schon). Mindestens
+   **3 Vorkommen**.
+4. *Nächstes erwartetes Datum:* letzte Buchung + 1/3/12 Kalendermonate (Monatsende wird geklemmt) bzw. 7 Tage.
+
+**Hinweise:** „Betrag geändert“, wenn der letzte Betrag vom bisher üblichen (Median der bis zu drei
+vorherigen) um mindestens **0,50 € und 5 %** abweicht - nur wenn die vorherigen Beträge untereinander stabil
+sind (schwankende Rechnungen wie Strom/Telefon haben keinen „üblichen“ Betrag); nach der zweiten Buchung zum
+neuen Preis verschwindet der Hinweis von selbst. „Erwartete Zahlung blieb bisher aus“, wenn das erwartete
+Datum um mehr als die Karenz überschritten ist (wöchentlich 3, monatlich 5, vierteljährlich 7, jährlich 14
+Tage). Bleibt eine Zahlung mehr als **zwei Perioden** aus, gilt die Reihe als vermutlich beendet
+(eingeklappter Bereich, kein Badge).
+
+**Kategorie & Detailansicht:** angezeigt wird die Kategorie der jüngsten *kategorisierten* Buchung der
+Reihe (nicht zwingend der jüngsten überhaupt); ganz ohne kategorisierte Buchung „Unkategorisiert“.
+Unterscheiden sich die vergebenen Kategorien der kategorisierten Buchungen, erscheint neben der Kategorie
+ein Ausrufezeichen (`categories_inconsistent`; unkategorisierte Buchungen zählen dafür nicht). Der Klick
+auf die **Bezeichnung** und auf das **Ausrufezeichen** öffnet dieselbe Komponente
+(`GET /recurring/detail`, Fragment `recurring/_detail.html` im `#recurring-detail-dialog`, per
+`hafinOpenDialog()`): alle Buchungen der Reihe als sortierbare List.js-Tabelle (Datum, Betrag,
+Kategorie - gleiches Muster wie der Dashboard-Drilldown) plus „Betrag in den letzten 12 Monaten“
+(`twelve_month_summary()`: Summe der Buchungen im Fenster `(heute − 12 Monate, heute]`; ist die Reihe
+jünger, steht der abgedeckte Zeitraum im Label, z. B. „… in den letzten 7 Monaten (seit Erkennung)“).
+Die Reihe wird über Konto + Vorzeichen + ID ihrer ältesten Buchung (`first_id`) adressiert. Jede Zeile hat
+eine **native** Kategorie-Auswahl (kein Tom Select - ein Dropdown würde im scrollenden Tabellenbereich
+abgeschnitten), die den bestehenden Endpunkt `POST /transactions/{id}/category` nutzt; nach dem Schließen
+lädt die Seite neu, damit Kategorie und Hinweis stimmen.
+
+**Ignorieren:** `RecurringIgnore` (Konto + normalisierter Auftraggeber + Vorzeichen) blendet eine Gruppe
+dauerhaft aus, ohne Buchungen zu verändern; erkannt wird über den Namen, nicht über Buchungs-IDs - neue
+Buchungen derselben Gruppe bleiben also ignoriert. Unter „Ignoriert“ lässt sich das rückgängig machen. Die
+Liste ist eine eigene, optionale **Backup-Datengruppe** `recurring_ignores` („Ignorierte wiederkehrende
+Zahlungen“, setzt Konten voraus; Verweis auf das Konto per `export_id`, Felder `payee_key`/`sign`); beim
+Import werden bereits vorhandene gleiche Einträge übersprungen, ältere Backups ohne die Gruppe bleiben
+importierbar. Sie wird bei „Alle Daten löschen“/Ersetzen von Konten, Kategorien oder Buchungen mitgelöscht
+(ohne Buchungen sind Ignorier-Einträge bedeutungslos).
+
 ## Umbuchungserkennung
 
 Jede Buchung ohne Verknüpfung wird gegen alle anderen noch unverknüpften
@@ -898,7 +973,15 @@ Die Startseite (`/`, `app/routers/dashboard.py`) zeigt Kennzahlen und eine
 Kategorie-Aufschlüsselung für einen frei wählbaren Zeitraum.
 
 **Zeitraum:** Granularität Tag/Woche/Monat/Jahr (Standard beim Öffnen: aktueller
-Monat), mit Vor-/Zurück-Navigation per Pfeil-Buttons. Intern wird der Zeitraum
+Monat), mit Vor-/Zurück-Navigation per Pfeil-Buttons - oder **Benutzerdefiniert** (`granularity=custom`
+mit `date_from`/`date_to`): genau ein frei wählbares Von-Bis (zwei Datumsfelder statt Pfeilen,
+Auto-Submit; auf schmalen Displays heißt die Option „Eigener“). `_resolve_period()` löst den Zeitraum auf (vertauschte Grenzen werden getauscht, nur ein
+Datum → eintägig, keines → Monatsanfang bis heute). Weil es für einen freien Zeitraum keinen sauber
+definierten vorherigen/nächsten gibt, entfallen dort Navigationspfeile, **Vorzeitraumsvergleich**
+(`compare` wird ignoriert, im Filter-Menü steht ein Hinweis) und Budgets. Der Wechsel von Monat/Woche/...
+zu „Benutzerdefiniert“ übernimmt den bisherigen Zeitraum als Vorbelegung; zurück zu Tag/Woche/Monat/Jahr
+dient der Von-Tag als Anker (`ref`). Drilldown-URLs und die Hidden-Felder der Filter-/Konto-Formulare
+tragen `date_from`/`date_to` mit (`custom_end`-Parameter von `_drilldown_url()`/`_dashboard_url()`). Intern wird der Zeitraum
 über `granularity` + einen Anker-Tag `ref` (ISO-Datum) in der URL abgebildet -
 `_period_bounds()` berechnet daraus Start-/Enddatum, `_shift_ref()` den Anker
 für den vorherigen/nächsten Zeitraum (bei Monat/Jahr immer auf den 1. des

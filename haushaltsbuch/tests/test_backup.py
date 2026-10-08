@@ -47,6 +47,7 @@ def test_replace_plan_categories_pulls_in_rules_budgets_and_transactions():
     counts = {
         "accounts": 2, "categories": 5, "mapping_profiles": 1, "categorization_rules": 3,
         "budgets": 2, "transactions": 100, "transaction_splits": 4, "rejected_transfer_pairs": 1,
+        "recurring_ignores": 3,
     }
     plan = svc.replace_plan(["categories"], counts)
     assert plan["categories"] == 5
@@ -54,12 +55,14 @@ def test_replace_plan_categories_pulls_in_rules_budgets_and_transactions():
     assert plan["budgets"] == 2
     assert plan["transactions"] == 100  # koennte auf geloeschte Kategorien zeigen -> muss mit weg
     assert plan["accounts"] == 0  # nicht ausgewaehlt -> bleibt
+    assert plan["recurring_ignores"] == 3  # haengt an Konten/Buchungen -> faellt mit weg
 
 
 def test_replace_plan_mapping_profiles_alone_touches_nothing_else():
     counts = {
         "accounts": 2, "categories": 5, "mapping_profiles": 1, "categorization_rules": 3,
         "budgets": 2, "transactions": 100, "transaction_splits": 4, "rejected_transfer_pairs": 1,
+        "recurring_ignores": 3,
     }
     plan = svc.replace_plan(["mapping_profiles"], counts)
     assert plan["mapping_profiles"] == 1
@@ -265,3 +268,130 @@ def test_delete_transactions_in_period_empty_range_is_a_no_op(session):
     _account(session, "DE01")
     deleted = svc.delete_transactions_in_period(session, date(2026, 9, 1), date(2026, 9, 30), None)
     assert deleted == {"transactions": 0, "transaction_splits": 0}
+
+
+# ------------------------------------------------ Standard-Mapping je Konto + Ignorier-Liste (Runde 22)
+
+
+def test_default_mapping_profile_survives_export_import_round_trip(session):
+    from app.models import MappingProfile
+
+    profile = MappingProfile(name="Sparkasse", date_column="d", payee_column="p", purpose_column="v", amount_column="a")
+    session.add(profile)
+    session.commit()
+    session.refresh(profile)
+    acc = Account(iban="DE00111", display_name="Giro", default_mapping_profile_id=profile.id)
+    session.add(acc)
+    session.add(Account(iban="DE00222", display_name="Ohne"))
+    session.commit()
+
+    doc, _counts = svc.build_export(session, ["accounts", "mapping_profiles"])
+    parsed = svc.parse_backup(svc.dump_json(doc))
+    assert parsed.problems == {}
+    selected = svc.resolve_selection(parsed, ["accounts", "mapping_profiles"])
+
+    with Session(_fresh_engine()) as target:
+        svc.execute_import(target, parsed, selected, mode="empty")
+        target.commit()
+        imported = {a.display_name: a for a in target.exec(select(Account)).all()}
+        imported_profile = target.exec(select(MappingProfile)).one()
+        assert imported["Giro"].default_mapping_profile_id == imported_profile.id
+        assert imported["Ohne"].default_mapping_profile_id is None
+
+
+def test_default_mapping_profile_reference_is_dropped_without_profiles_group(session):
+    from app.models import MappingProfile
+
+    profile = MappingProfile(name="Sparkasse", date_column="d", payee_column="p", purpose_column="v", amount_column="a")
+    session.add(profile)
+    session.commit()
+    session.refresh(profile)
+    session.add(Account(iban="DE00111", display_name="Giro", default_mapping_profile_id=profile.id))
+    session.commit()
+
+    doc, _counts = svc.build_export(session, ["accounts", "mapping_profiles"])
+    parsed = svc.parse_backup(svc.dump_json(doc))
+    selected = svc.resolve_selection(parsed, ["accounts"])  # Profile bewusst nicht mitimportiert
+    with Session(_fresh_engine()) as target:
+        svc.execute_import(target, parsed, selected, mode="empty")
+        target.commit()
+        assert target.exec(select(Account)).one().default_mapping_profile_id is None
+
+
+def test_reset_all_also_removes_recurring_ignores(session):
+    from app.models import RecurringIgnore
+
+    acc, _top, _txn = _seed(session)
+    session.add(RecurringIgnore(account_id=acc.id, payee_key="netflix", sign=-1))
+    session.commit()
+    svc.reset_all(session)
+    assert session.exec(select(RecurringIgnore)).all() == []
+
+
+def test_replacing_mapping_profiles_clears_account_defaults(session):
+    from app.models import MappingProfile
+
+    profile = MappingProfile(name="Sparkasse", date_column="d", payee_column="p", purpose_column="v", amount_column="a")
+    session.add(profile)
+    session.commit()
+    session.refresh(profile)
+    acc = Account(iban="DE00111", display_name="Giro", default_mapping_profile_id=profile.id)
+    session.add(acc)
+    session.commit()
+    svc._delete_existing(session, {"mapping_profiles"})
+    session.commit()
+    session.refresh(acc)
+    assert acc.default_mapping_profile_id is None
+
+
+def test_recurring_ignores_round_trip_and_requires_accounts(session):
+    from app.models import RecurringIgnore
+
+    acc, _top, _txn = _seed(session)
+    session.add(RecurringIgnore(account_id=acc.id, payee_key="netflix", sign=-1))
+    session.add(RecurringIgnore(account_id=acc.id, payee_key="arbeitgeber", sign=1))
+    session.commit()
+
+    assert svc.with_dependencies(["recurring_ignores"]) == ["accounts", "recurring_ignores"]
+    doc, counts = svc.build_export(session, ["recurring_ignores"])
+    assert counts["recurring_ignores"] == 2 and counts["accounts"] == 1
+    parsed = svc.parse_backup(svc.dump_json(doc))
+    assert parsed.problems == {}
+    selected = svc.resolve_selection(parsed, ["recurring_ignores"])
+    assert selected == ["accounts", "recurring_ignores"]
+
+    with Session(_fresh_engine()) as target:
+        report = svc.execute_import(target, parsed, selected, mode="empty")
+        target.commit()
+        assert report.imported["recurring_ignores"] == 2
+        rows = {(r.payee_key, r.sign) for r in target.exec(select(RecurringIgnore)).all()}
+        assert rows == {("netflix", -1), ("arbeitgeber", 1)}
+        assert target.exec(select(RecurringIgnore)).first().account_id == target.exec(select(Account)).one().id
+
+
+def test_recurring_ignores_without_accounts_in_file_is_a_problem():
+    doc = {
+        "meta": {"format": "haushaltsbuch-backup", "schema_version": 1},
+        "recurring_ignores": [{"export_id": "r-1", "account": "acc-1", "payee_key": "netflix", "sign": -1}],
+    }
+    parsed = svc.parse_backup(svc.dump_json(doc))
+    assert parsed.problems.get("recurring_ignores")
+    assert not parsed.status("recurring_ignores")[0]
+
+
+def test_recurring_ignores_invalid_sign_is_reported():
+    doc = {
+        "meta": {"format": "haushaltsbuch-backup", "schema_version": 1},
+        "accounts": [{"export_id": "acc-1", "iban": "DE00", "display_name": "T"}],
+        "recurring_ignores": [{"export_id": "r-1", "account": "acc-1", "payee_key": "x", "sign": 5}],
+    }
+    parsed = svc.parse_backup(svc.dump_json(doc))
+    assert any("sign" in m for m in parsed.problems.get("recurring_ignores", []))
+
+
+def test_old_backup_without_recurring_ignores_still_imports(session):
+    _seed(session)
+    doc, _ = svc.build_export(session, ["accounts"])
+    assert "recurring_ignores" not in doc
+    parsed = svc.parse_backup(svc.dump_json(doc))
+    assert parsed.problems == {} and not parsed.present("recurring_ignores")

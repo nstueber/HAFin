@@ -17,6 +17,7 @@ from app.models.category import (
 from app.models.category_budget import CategoryBudget
 from app.models.import_history import ImportHistoryEntry
 from app.models.mapping_profile import MappingProfile
+from app.models.recurring_ignore import RecurringIgnore
 from app.models.transaction import Transaction, TransactionType
 from app.models.transaction_split import TransactionSplit
 from app.models.transfer_rejection import RejectedTransferPair
@@ -35,6 +36,7 @@ __all__ = [
     "RULE_FIELDS",
     "RULE_MODES",
     "RULE_OPERATORS",
+    "RecurringIgnore",
     "RejectedTransferPair",
     "SYSTEM_CATEGORY_DEFAULT_NAMES",
     "Transaction",

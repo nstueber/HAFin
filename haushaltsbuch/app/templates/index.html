@@ -18,11 +18,14 @@
       </p>
     </div>
     <div class="col-span-2 row-start-2 sm:col-auto sm:row-auto">
+      {# Kurzform auf schmalen Displays, damit die fuenf Optionen ohne horizontales Scrollen passen #}
+      {% set custom_label %}<span class="sm:hidden">Eigener</span><span class="hidden sm:inline">Benutzerdefiniert</span>{% endset %}
       {{ segmented_links([
            ("day", "Tag", url_granularity["day"]),
            ("week", "Woche", url_granularity["week"]),
            ("month", "Monat", url_granularity["month"]),
            ("year", "Jahr", url_granularity["year"]),
+           ("custom", custom_label, url_granularity["custom"]),
          ], granularity, "Zeitraum", stretch=true) }}
     </div>
     {% set transfer_labels = {"all": "Alle Buchungen", "only": "Nur Umbuchungen", "hide": "Ohne Umbuchungen"} %}
@@ -52,6 +55,7 @@
       >
         <input type="hidden" name="granularity" value="{{ granularity }}" />
         <input type="hidden" name="ref" value="{{ ref }}" />
+        {% if custom %}<input type="hidden" name="date_from" value="{{ date_from }}" /><input type="hidden" name="date_to" value="{{ date_to }}" />{% endif %}
         {% if selected_account_id %}<input type="hidden" name="account_id" value="{{ selected_account_id }}" />{% endif %}
         <p class="px-2 pb-1 pt-1 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Umbuchungen</p>
         {% for key, label in transfer_labels.items() %}
@@ -67,6 +71,7 @@
           {{ label }}
         </label>
         {% endfor %}
+        {% if not custom %}
         <hr class="my-2 border-gray-200 dark:border-gray-800" />
         <label class="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
           <input
@@ -82,10 +87,30 @@
             <span class="block text-xs font-normal text-gray-500 dark:text-gray-400">Veränderung je Kategorie ggü. dem vorherigen Zeitraum (nur im Modus „Einfach“).</span>
           </span>
         </label>
+        {% else %}
+        <hr class="my-2 border-gray-200 dark:border-gray-800" />
+        <p class="px-2 py-1 text-xs text-gray-500 dark:text-gray-400" id="compare-unavailable">Der Vorzeitraumsvergleich ist bei „Benutzerdefiniert“ nicht verfügbar (es gibt keinen vorherigen Zeitraum).</p>
+        {% endif %}
       </form>
     </div>
   </div>
 
+  {% if custom %}
+  {# Frei gewaehlter Zeitraum: Von-Bis-Datumsfelder statt Vor/Zurueck-Pfeilen (es gibt keinen vorherigen/naechsten Zeitraum) #}
+  <form method="get" action="/" id="custom-period-form" class="mt-5 flex flex-wrap items-end justify-center gap-3">
+    <input type="hidden" name="granularity" value="custom" />
+    <input type="hidden" name="transfers" value="{{ transfers }}" />
+    {% if selected_account_id %}<input type="hidden" name="account_id" value="{{ selected_account_id }}" />{% endif %}
+    <div>
+      <label class="form-label" for="custom-date-from">Von</label>
+      <input type="date" id="custom-date-from" name="date_from" value="{{ date_from }}" required class="form-input" onchange="this.form.submit()" />
+    </div>
+    <div>
+      <label class="form-label" for="custom-date-to">Bis</label>
+      <input type="date" id="custom-date-to" name="date_to" value="{{ date_to }}" required class="form-input" onchange="this.form.submit()" />
+    </div>
+  </form>
+  {% else %}
   <div class="mt-5 flex items-center justify-center gap-4">
     <a href="{{ url_prev }}" class="btn-ghost-icon" aria-label="Vorheriger Zeitraum">
       {{ chevron_left("h-5 w-5") }}
@@ -97,6 +122,7 @@
       {{ chevron_right("h-5 w-5") }}
     </a>
   </div>
+  {% endif %}
 </div>
 
 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -160,6 +186,7 @@
       <form method="get" action="/" class="flex items-center gap-2">
         <input type="hidden" name="granularity" value="{{ granularity }}" />
         <input type="hidden" name="ref" value="{{ ref }}" />
+        {% if custom %}<input type="hidden" name="date_from" value="{{ date_from }}" /><input type="hidden" name="date_to" value="{{ date_to }}" />{% endif %}
         <input type="hidden" name="transfers" value="{{ transfers }}" />
         {% if compare %}<input type="hidden" name="compare" value="1" />{% endif %}
         <select

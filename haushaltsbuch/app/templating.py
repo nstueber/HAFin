@@ -1,3 +1,5 @@
+import time
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -52,6 +54,47 @@ def ingress_base_path(request: Request) -> str:
     return get_ingress_prefix(request)
 
 
+# Badge "offene Hinweise" der wiederkehrenden Zahlungen (Navigation). Die Erkennung laeuft ueber alle
+# Buchungen - deshalb kurz zwischengespeichert (Schluessel = Buchungs-Fingerprint + Tag, plus 60 s TTL),
+# nicht bei jedem Seitenaufruf neu berechnet. Aenderungen am Ignorieren leeren den Cache sofort.
+_BADGE_TTL_SECONDS = 60
+_badge_cache: dict = {}
+
+
+def invalidate_recurring_badge() -> None:
+    _badge_cache.clear()
+
+
+def recurring_attention_count() -> int:
+    from sqlalchemy import func
+    from sqlmodel import Session, select
+
+    from app.database import engine
+    from app.models import RecurringIgnore, Transaction
+    from app.services.recurring import attention_count
+
+    try:
+        with Session(engine) as session:
+            fingerprint = (
+                tuple(
+                    session.exec(
+                        select(func.count(Transaction.id), func.max(Transaction.id), func.sum(Transaction.amount))
+                    ).one()
+                ),
+                session.exec(select(func.count(RecurringIgnore.id))).one(),
+                date.today(),
+            )
+            cached = _badge_cache.get("value")
+            if cached and cached[0] == fingerprint and time.monotonic() - cached[2] < _BADGE_TTL_SECONDS:
+                return cached[1]
+            value = attention_count(session)
+    except Exception:  # Badge ist reine Zusatzanzeige - nie eine Seite daran scheitern lassen
+        return 0
+    _badge_cache["value"] = (fingerprint, value, time.monotonic())
+    return value
+
+
+templates.env.globals["recurring_attention_count"] = recurring_attention_count
 templates.env.globals["app_version"] = get_app_version()
 templates.env.globals["ingress_base_path"] = ingress_base_path
 templates.env.filters["format_iban"] = format_iban

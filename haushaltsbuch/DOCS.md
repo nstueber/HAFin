@@ -21,7 +21,8 @@ wird in der App selbst eingestellt.
 1. **Einstellungen → Konten** → „Neues Konto“ anlegen (Name, IBAN).
 2. **Einstellungen → Mapping-Profile** → „Neues Profil anlegen“: eine Beispiel-CSV der Bank hochladen; Trennzeichen,
    Kodierung, Datumsformat und Spaltenzuordnung werden erkannt und lassen sich prüfen.
-3. **Import** → Konto und Profil wählen, CSV hochladen. Sowohl die erfolgreich importierten als auch
+3. **Import** → Konto wählen (ist dem Konto ein Mapping-Profil zugeordnet - Einstellungen → Konten -, entfällt die
+   Profil-Auswahl; sonst wird sie beim ersten Import als Standard des Kontos gespeichert), CSV hochladen. Sowohl die erfolgreich importierten als auch
    die als Duplikat übersprungenen Buchungen lassen sich über die jeweilige Kachel im Ergebnis als
    Liste ansehen - übersprungene Zeilen bei Bedarf trotzdem importieren, irrtümlich importierte
    Buchungen direkt aus dieser Liste wieder löschen. Fehlen im abgedeckten Zeitraum der Datei
@@ -30,9 +31,13 @@ wird in der App selbst eingestellt.
    (Zeitpunkt, Konto, Buchungszeitraum, Anzahl) stehen ausklappbar unterhalb des Formulars.
 4. **Buchungen** → Kategorien zuweisen, Umbuchungen bestätigen, Bargeld aufteilen. Passt das Vorzeichen einer
    Buchung nicht zum Typ ihrer Kategorie (siehe unten), erscheint ein kleines Warn-Icon – die Zuweisung bleibt möglich.
-5. **Übersicht** → Kennzahlen und Kategorie-Diagramme („Ausgaben nach Kategorie“ und „Einnahmen nach Kategorie“) mit
+5. **Wiederkehrende Zahlungen** → erkannte Abos/Daueraufträge mit nächstem erwarteten Datum; Hinweise bei
+   Betragsänderung und ausbleibender Zahlung (Badge im Menü), falsche Treffer lassen sich ignorieren. Ein Klick auf die
+   Bezeichnung zeigt alle Buchungen der Reihe und die Summe der letzten 12 Monate.
+6. **Übersicht** → Kennzahlen und Kategorie-Diagramme („Ausgaben nach Kategorie“ und „Einnahmen nach Kategorie“) mit
    dem Betrag am Balkenende; ein Klick auf eine Zahl oder einen Balken zeigt die zugrunde liegenden Buchungen. Über
    im Filter-Menü (gleiches Symbol wie der Umbuchungsfilter) lässt sich ein Vorzeitraumsvergleich einblenden (z. B. Vormonat).
+   Neben Tag/Woche/Monat/Jahr gibt es „Benutzerdefiniert“ mit freiem Von-/Bis-Datum (ohne Pfeile und Vergleich).
 
 ### Kategorie-Typ (Einnahme/Ausgabe)
 

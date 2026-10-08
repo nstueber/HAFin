@@ -14,6 +14,7 @@ from app.routers import (
     dashboard,
     imports,
     mapping_profiles,
+    recurring,
     settings,
     transactions,
 )
@@ -49,6 +50,7 @@ app.include_router(budgets.router)
 app.include_router(mapping_profiles.router)
 app.include_router(imports.router)
 app.include_router(backup.router)
+app.include_router(recurring.router)
 app.include_router(settings.router)
 
 
@@ -60,6 +62,7 @@ def on_startup() -> None:
     categories.ensure_system_categories()
     transactions.backfill_umbuchung_categories()
     categories.backfill_types()
+    accounts.backfill_mapping_profiles()
 
 
 @app.get("/health")

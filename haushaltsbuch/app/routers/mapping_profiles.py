@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.database import DATA_DIR, get_session
-from app.models import MappingProfile
+from app.models import Account, MappingProfile
 from app.services.csv_detection import (
     RAW_PREVIEW_LINE_LIMIT,
     analyze,
@@ -412,6 +412,10 @@ def delete_profile(
     request: Request, profile_id: int, session: Session = Depends(get_session)
 ) -> HTMLResponse:
     profile = session.get(MappingProfile, profile_id)
+    # Konten, die dieses Profil als Standard verwenden, verlieren die Zuordnung (kein toter Verweis)
+    for account in session.exec(select(Account).where(Account.default_mapping_profile_id == profile_id)).all():
+        account.default_mapping_profile_id = None
+        session.add(account)
     session.delete(profile)
     session.commit()
     return HTMLResponse(content="")

@@ -21,6 +21,18 @@
         <input type="text" name="bank_name" class="form-input" value="{{ account.bank_name or '' }}" />
       </div>
     </div>
+    <div class="mt-4 sm:max-w-sm">
+      <label class="form-label" for="account-default-mapping">Mapping-Profil (optional)</label>
+      <select id="account-default-mapping" name="default_mapping_profile_id" data-searchable class="form-input">
+        <option value="">– keins (beim Import wählen) –</option>
+        {% for profile in profiles %}
+        <option value="{{ profile.id }}" {% if account.default_mapping_profile_id == profile.id %}selected{% endif %}>{{ profile.name }}</option>
+        {% endfor %}
+      </select>
+      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        Wird beim CSV-Import dieses Kontos automatisch verwendet, die Auswahl entfällt dort.
+      </p>
+    </div>
     <div class="mt-5 flex items-center gap-3">
       <button type="submit" class="btn-primary">Speichern</button>
       <a href="/accounts" class="btn-outline">Abbrechen</a>

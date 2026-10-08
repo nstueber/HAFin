@@ -37,11 +37,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any, Iterable, Optional
 
-from sqlalchemy import delete, func, or_
+from sqlalchemy import delete, func, or_, update
 from sqlmodel import Session, select
 
 from app.models import (
     CATEGORY_TYPES,
+    RecurringIgnore,
     RULE_FIELDS,
     RULE_MODES,
     RULE_OPERATORS,
@@ -66,7 +67,10 @@ BACKUP_FORMAT = "haushaltsbuch-backup"
 SCHEMA_VERSION = 1
 MIN_SCHEMA_VERSION = 1
 
-GROUPS = ("accounts", "categories", "mapping_profiles", "categorization_rules", "budgets", "transactions")
+GROUPS = (
+    "accounts", "categories", "mapping_profiles", "categorization_rules", "budgets", "transactions",
+    "recurring_ignores",
+)
 GROUP_LABELS = {
     "accounts": "Konten",
     "categories": "Kategorien",
@@ -74,12 +78,14 @@ GROUP_LABELS = {
     "categorization_rules": "Kategorisierungsregeln",
     "budgets": "Budgets",
     "transactions": "Buchungen (inkl. Bargeld-Splits)",
+    "recurring_ignores": "Ignorierte wiederkehrende Zahlungen",
 }
 # Abhaengigkeiten: Buchungen referenzieren zwingend Konten und Kategorien; Regeln und Budgets Kategorien.
 REQUIRES = {
     "transactions": ("accounts", "categories"),
     "categorization_rules": ("categories",),
     "budgets": ("categories",),
+    "recurring_ignores": ("accounts",),
 }
 
 CONFIRM_WORD = "LÖSCHEN"
@@ -158,12 +164,19 @@ ENTITY_FIELDS: dict[str, list[F]] = {
         F("comment"),
         F("created_at", warn_missing=False),
     ],
+    "recurring_ignores": [
+        F("payee_key", required=True),
+        F("sign", required=True),
+        F("created_at", warn_missing=False),
+    ],
     "transaction_splits": [F("amount", required=True), F("created_at", warn_missing=False)],
     "rejected_transfer_pairs": [F("created_at", warn_missing=False)],
 }
 
 # Verweisfelder: name -> (Ziel-Abschnitt, Pflicht?)
 REF_FIELDS: dict[str, dict[str, tuple[str, bool]]] = {
+    # Standard-Mapping-Profil des Kontos (optional; nur aufgeloest, wenn auch die Profile importiert werden)
+    "accounts": {"default_mapping_profile": ("mapping_profiles", False)},
     "categories": {"parent": ("categories", False)},
     "categorization_rules": {"category": ("categories", True)},
     "budgets": {"category": ("categories", True)},
@@ -173,6 +186,7 @@ REF_FIELDS: dict[str, dict[str, tuple[str, bool]]] = {
         "suggested_category": ("categories", False),
         "counter_transaction": ("transactions", False),
     },
+    "recurring_ignores": {"account": ("accounts", True)},
     "transaction_splits": {
         "transaction": ("transactions", True),
         "category": ("categories", True),
@@ -190,6 +204,7 @@ SECTION_LABELS = {
     "categorization_rules": "Kategorisierungsregeln",
     "budgets": "Budgets",
     "transactions": "Buchungen",
+    "recurring_ignores": "Ignorierte wiederkehrende Zahlungen",
     "transaction_splits": "Bargeld-Splits",
     "rejected_transfer_pairs": "Abgelehnte Umbuchungs-Vorschläge",
 }
@@ -200,6 +215,7 @@ SECTION_GROUP = {
     "categorization_rules": "categorization_rules",
     "budgets": "budgets",
     "transactions": "transactions",
+    "recurring_ignores": "recurring_ignores",
     "transaction_splits": "transactions",
     "rejected_transfer_pairs": "transactions",
 }
@@ -230,6 +246,12 @@ def build_export(session: Session, groups: Iterable[str]) -> tuple[dict, dict]:
     category_ids: dict[int, str] = {}
     transaction_ids: dict[int, str] = {}
 
+    profile_ids: dict[int, str] = {}
+    if "mapping_profiles" in selected:
+        # vorab vergeben: Konten (weiter unten) verweisen auf ihr Standard-Mapping-Profil
+        for p in session.exec(select(MappingProfile).order_by(MappingProfile.id)).all():
+            profile_ids[p.id] = new_id()
+
     if "accounts" in selected:
         rows = session.exec(select(Account).order_by(Account.id)).all()
         doc["accounts"] = []
@@ -238,6 +260,9 @@ def build_export(session: Session, groups: Iterable[str]) -> tuple[dict, dict]:
             doc["accounts"].append(
                 {
                     "export_id": account_ids[a.id],
+                    "default_mapping_profile": profile_ids.get(a.default_mapping_profile_id)
+                    if a.default_mapping_profile_id
+                    else None,
                     "iban": a.iban,
                     "display_name": a.display_name,
                     "bank_name": a.bank_name,
@@ -267,7 +292,7 @@ def build_export(session: Session, groups: Iterable[str]) -> tuple[dict, dict]:
         rows = session.exec(select(MappingProfile).order_by(MappingProfile.id)).all()
         doc["mapping_profiles"] = [
             {
-                "export_id": new_id(),
+                "export_id": profile_ids[p.id],
                 "name": p.name,
                 "delimiter": p.delimiter,
                 "decimal_separator": p.decimal_separator,
@@ -377,6 +402,21 @@ def build_export(session: Session, groups: Iterable[str]) -> tuple[dict, dict]:
         ]
         counts["rejected_transfer_pairs"] = len(doc["rejected_transfer_pairs"])
 
+    if "recurring_ignores" in selected:
+        rows = session.exec(select(RecurringIgnore).order_by(RecurringIgnore.id)).all()
+        doc["recurring_ignores"] = [
+            {
+                "export_id": new_id(),
+                "account": account_ids[r.account_id],
+                "payee_key": r.payee_key,
+                "sign": r.sign,
+                "created_at": _iso(r.created_at),
+            }
+            for r in rows
+            if r.account_id in account_ids
+        ]
+        counts["recurring_ignores"] = len(doc["recurring_ignores"])
+
     meta = {
         "format": BACKUP_FORMAT,
         "schema_version": SCHEMA_VERSION,
@@ -463,6 +503,8 @@ def _label(section: str, index: int, values: dict) -> str:
         return f"Budget Nr. {n}"
     if section == "transactions":
         return f"Buchung Nr. {n} ({values.get('booking_date', '?')}, '{values.get('payee', '?')}')"
+    if section == "recurring_ignores":
+        return f"Ignorierte wiederkehrende Zahlung Nr. {n} ('{values.get('payee_key', '?')}')"
     if section == "transaction_splits":
         return f"Bargeld-Split Nr. {n}"
     return f"Abgelehnter Vorschlag Nr. {n}"
@@ -473,6 +515,14 @@ def _coerce(section: str, name: str, value: Any, label: str, problems: list[str]
     try:
         if name == "booking_date":
             return date.fromisoformat(str(value))
+        if name == "sign" and section == "recurring_ignores":
+            if isinstance(value, bool) or value not in (-1, 1):
+                raise ValueError("erlaubt: -1 (Ausgabe) oder 1 (Einnahme)")
+            return int(value)
+        if name == "payee_key" and section == "recurring_ignores":
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("darf nicht leer sein")
+            return value
         if name == "monthly_amount":
             if isinstance(value, bool):
                 raise ValueError("kein Zahlenwert")
@@ -656,6 +706,11 @@ def parse_backup(raw: bytes) -> ParsedBackup:
                 + " - Buchungen können ohne diese Daten nicht importiert werden "
                 "(vermutlich mit einer sehr alten Export-Version erstellt)."
             )
+    if "recurring_ignores" in parsed.records and "accounts" not in parsed.records:
+        problems["recurring_ignores"].append(
+            "Die Datei enthält ignorierte wiederkehrende Zahlungen, aber keine Konten - sie können ohne "
+            "Konten nicht importiert werden."
+        )
     for group in ("categorization_rules", "budgets"):
         if group in parsed.records and "categories" not in parsed.records:
             problems[group].append(
@@ -766,6 +821,7 @@ def target_counts(session: Session) -> dict[str, int]:
         "transactions": count(Transaction),
         "transaction_splits": count(TransactionSplit),
         "rejected_transfer_pairs": count(RejectedTransferPair),
+        "recurring_ignores": count(RecurringIgnore),
     }
 
 
@@ -796,10 +852,16 @@ def replace_plan(selected: Iterable[str], counts: dict[str, int]) -> dict[str, i
     if selected & {"accounts", "categories", "transactions"}:
         for key in ("transactions", "transaction_splits", "rejected_transfer_pairs"):
             plan[key] = counts[key]
+    # Ignorier-Liste: eigene Gruppe, faellt aber auch mit Konten/Buchungen weg (siehe _delete_existing)
+    if selected & {"accounts", "categories", "transactions", "recurring_ignores"}:
+        plan["recurring_ignores"] = counts["recurring_ignores"]
     return plan
 
 
 def _delete_existing(session: Session, selected: set[str]) -> None:
+    # Ignorierte "wiederkehrende Zahlungen" gehoeren zu Konto + Buchungen und sind ohne sie bedeutungslos
+    if selected & {"accounts", "categories", "transactions", "recurring_ignores"}:
+        session.exec(delete(RecurringIgnore))
     if selected & {"accounts", "categories", "transactions"}:
         session.exec(delete(TransactionSplit))
         session.exec(delete(RejectedTransferPair))
@@ -807,6 +869,8 @@ def _delete_existing(session: Session, selected: set[str]) -> None:
     if "accounts" in selected:
         session.exec(delete(Account))
     if "mapping_profiles" in selected:
+        # Konten (falls sie bleiben) verlieren ihr Standard-Mapping - kein toter Verweis
+        session.exec(update(Account).values(default_mapping_profile_id=None))
         session.exec(delete(MappingProfile))
     if selected & {"categories", "categorization_rules"}:
         session.exec(delete(CategorizationRule))
@@ -890,6 +954,7 @@ def execute_import(
         accounts: dict[str, Account] = {}
         categories: dict[str, Category] = {}
         transactions: dict[str, Transaction] = {}
+        profiles_by_export_id: dict[str, MappingProfile] = {}
 
         if "accounts" in selected_set:
             current = "Konten"
@@ -992,26 +1057,38 @@ def execute_import(
                         f"Mapping-Profil '{v['name']}' existiert bereits in der Ziel-Datenbank und wurde "
                         "übersprungen."
                     )
+                    existing_profile = session.exec(
+                        select(MappingProfile).where(MappingProfile.name == v["name"])
+                    ).first()
+                    if existing_profile is not None and rec.export_id:
+                        profiles_by_export_id[rec.export_id] = existing_profile
                     continue
-                session.add(
-                    MappingProfile(
-                        name=v["name"],
-                        delimiter=v["delimiter"],
-                        decimal_separator=v["decimal_separator"],
-                        encoding=v["encoding"],
-                        date_format=v["date_format"],
-                        header_row_index=v["header_row_index"],
-                        date_column=v["date_column"],
-                        payee_column=v["payee_column"],
-                        purpose_column=v["purpose_column"],
-                        amount_column=v["amount_column"],
-                        created_at=v.get("created_at") or datetime.utcnow(),
-                    )
+                new_profile = MappingProfile(
+                    name=v["name"],
+                    delimiter=v["delimiter"],
+                    decimal_separator=v["decimal_separator"],
+                    encoding=v["encoding"],
+                    date_format=v["date_format"],
+                    header_row_index=v["header_row_index"],
+                    date_column=v["date_column"],
+                    payee_column=v["payee_column"],
+                    purpose_column=v["purpose_column"],
+                    amount_column=v["amount_column"],
+                    created_at=v.get("created_at") or datetime.utcnow(),
                 )
+                session.add(new_profile)
+                if rec.export_id:
+                    profiles_by_export_id[rec.export_id] = new_profile
                 existing_names.add(v["name"])
                 imported += 1
             session.flush()
             report.imported["mapping_profiles"] = imported
+            # Standard-Mapping-Profil der importierten Konten setzen (Verweis im Backup, optional)
+            for acc_rec in parsed.records.get("accounts", []) if "accounts" in selected_set else []:
+                ref = acc_rec.refs.get("default_mapping_profile")
+                if ref and ref in profiles_by_export_id and acc_rec.export_id in accounts:
+                    accounts[acc_rec.export_id].default_mapping_profile_id = profiles_by_export_id[ref].id
+            session.flush()
 
         if "categorization_rules" in selected_set:
             current = "Kategorisierungsregeln"
@@ -1115,6 +1192,31 @@ def execute_import(
                 )
                 pair_count += 1
             report.imported["rejected_transfer_pairs"] = pair_count
+
+        if "recurring_ignores" in selected_set:
+            current = "Ignorierte wiederkehrende Zahlungen"
+            seen = {
+                (i.account_id, i.payee_key, i.sign) for i in session.exec(select(RecurringIgnore)).all()
+            }
+            ignore_count = 0
+            for rec in parsed.records["recurring_ignores"]:
+                v = rec.values
+                account = accounts[rec.refs["account"]]
+                key = (account.id, v["payee_key"], v["sign"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                session.add(
+                    RecurringIgnore(
+                        account_id=account.id,
+                        payee_key=v["payee_key"],
+                        sign=v["sign"],
+                        created_at=v.get("created_at") or datetime.utcnow(),
+                    )
+                )
+                ignore_count += 1
+            session.flush()
+            report.imported["recurring_ignores"] = ignore_count
 
         current = "Abschluss"
         if "categories" in selected_set:

@@ -1,6 +1,5 @@
 from collections import defaultdict
 from datetime import date, timedelta
-from difflib import SequenceMatcher
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -19,6 +18,7 @@ from app.models import (
     TransactionType,
     UMBUCHUNG_KEY,
 )
+from app.services.similarity import SIMILAR_TEXT_THRESHOLD, text_similarity
 from app.services.category_tree import category_groups
 from app.services.category_types import category_sign_hint
 from app.system_categories import get_or_create_system_category, get_system_category
@@ -30,7 +30,6 @@ LIST_LIMIT = 200
 TRANSFER_WINDOW_DAYS = 2
 SUGGESTIONS_LIMIT = 20
 SIMILAR_PAYMENTS_LIMIT = 10
-SIMILAR_TEXT_THRESHOLD = 0.6
 
 
 def _category_groups(session: Session) -> list[dict]:
@@ -383,10 +382,6 @@ def _category_display_name(category_id: Optional[int], categories_by_id: dict) -
     return cat.name
 
 
-def _text_similarity(a: str, b: str) -> float:
-    return SequenceMatcher(None, a, b).ratio()
-
-
 def _similar_payments(session: Session, txn: Transaction, categories_by_id: dict) -> dict:
     """Findet Buchungen mit identischem Betrag+Verwendungszweck ("exakt", konto-
     uebergreifend) bzw. gleichem Betrag ODER aehnlichem Verwendungszweck ("aehnlich").
@@ -407,7 +402,7 @@ def _similar_payments(session: Session, txn: Transaction, categories_by_id: dict
         if same_amount and same_text:
             exact.append(c)
             continue
-        ratio = _text_similarity(txn_text, c_text) if txn_text and c_text else 0.0
+        ratio = text_similarity(txn_text, c_text) if txn_text and c_text else 0.0
         if same_amount or ratio >= SIMILAR_TEXT_THRESHOLD:
             similar.append((c, same_amount, ratio))
 

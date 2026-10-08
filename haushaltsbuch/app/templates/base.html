@@ -1,24 +1,31 @@
-{% from "_icons.html" import sun, moon, dashboard, upload, banknotes, cog, arrow_left %}
+{% from "_icons.html" import sun, moon, dashboard, upload, banknotes, cog, arrow_left, arrow_path %}
 {# Unterseiten des Einstellungen-Bereichs: dort ist "Einstellungen" in der Navigation aktiv und oben
    erscheint der Zurueck-Link zur Hub-Seite #}
 {% set settings_children = ['accounts', 'categories', 'mapping_profiles', 'rules', 'budgets', 'backup', 'licenses'] %}
+{% set recurring_badge = recurring_attention_count() %}
 {% set current_nav = 'settings' if (active_nav == 'settings' or active_nav in settings_children) else active_nav %}
 
-{% macro nav_item(href, icon_html, label, key, active_nav, layout, short=none) %}
+{% macro nav_icon(icon_html, badge) -%}
+{%- if badge -%}
+<span class="relative inline-flex">{{ icon_html }}<span data-recurring-badge class="absolute -right-2 -top-1.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-none text-white" aria-label="{{ badge }} offene Hinweise">{{ badge }}</span></span>
+{%- else -%}{{ icon_html }}{%- endif -%}
+{%- endmacro %}
+
+{% macro nav_item(href, icon_html, label, key, active_nav, layout, short=none, badge=0) %}
 {% set is_active = active_nav == key %}
 {% if layout == 'sidebar' %}
 <a href="{{ href }}" class="nav-link {{ 'nav-link-active' if is_active else '' }}">
-  {{ icon_html }}
+  {{ nav_icon(icon_html, badge) }}
   <span>{{ label }}</span>
 </a>
 {% elif layout == 'rail' %}
 <a href="{{ href }}" class="flex flex-col items-center gap-1 rounded-lg px-1 py-2.5 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100 {{ 'bg-accent/10 text-accent hover:bg-accent/10 hover:text-accent dark:bg-accent/15 dark:text-accent dark:hover:text-accent' if is_active else '' }}">
-  {{ icon_html }}
+  {{ nav_icon(icon_html, badge) }}
   <span>{{ label }}</span>
 </a>
 {% else %}
 <a href="{{ href }}" aria-label="{{ label }}" title="{{ label }}" class="flex min-w-0 flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium {{ 'text-accent' if is_active else 'text-gray-500 dark:text-gray-400' }}">
-  {{ icon_html }}
+  {{ nav_icon(icon_html, badge) }}
   <span class="max-w-full truncate px-0.5 text-[11px]">{{ short or label }}</span>
 </a>
 {% endif %}
@@ -67,6 +74,7 @@
         {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', current_nav, 'sidebar') }}
         {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', current_nav, 'sidebar') }}
         {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', current_nav, 'sidebar') }}
+        {{ nav_item('/recurring', arrow_path('h-5 w-5'), 'Wiederkehrende Zahlungen', 'recurring', current_nav, 'sidebar', badge=recurring_badge) }}
         {{ nav_item('/settings', cog('h-5 w-5'), 'Einstellungen', 'settings', current_nav, 'sidebar') }}
       </nav>
       <p class="px-6 py-4 text-xs text-gray-400 dark:text-gray-500" title="Version">v{{ app_version }}</p>
@@ -79,6 +87,7 @@
         {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', current_nav, 'rail') }}
         {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', current_nav, 'rail') }}
         {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', current_nav, 'rail') }}
+        {{ nav_item('/recurring', arrow_path('h-5 w-5'), 'Abos', 'recurring', current_nav, 'rail', badge=recurring_badge) }}
         {{ nav_item('/settings', cog('h-5 w-5'), 'Einstellungen', 'settings', current_nav, 'rail') }}
       </nav>
       <p class="max-w-full truncate px-1 py-3 text-[10px] text-gray-400 dark:text-gray-500" title="Version">v{{ app_version }}</p>
@@ -135,6 +144,7 @@
     {{ nav_item('/', dashboard('h-5 w-5'), 'Übersicht', 'overview', current_nav, 'bottom') }}
     {{ nav_item('/transactions', banknotes('h-5 w-5'), 'Buchungen', 'transactions', current_nav, 'bottom') }}
     {{ nav_item('/import', upload('h-5 w-5'), 'Import', 'import', current_nav, 'bottom') }}
+        {{ nav_item('/recurring', arrow_path('h-5 w-5'), 'Abos', 'recurring', current_nav, 'bottom', badge=recurring_badge) }}
     {{ nav_item('/settings', cog('h-5 w-5'), 'Einstellungen', 'settings', current_nav, 'bottom') }}
   </nav>
 </body>

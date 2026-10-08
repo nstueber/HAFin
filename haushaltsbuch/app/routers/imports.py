@@ -79,6 +79,10 @@ def _form_context(
         "form_error": form_error,
         "selected_account_id": selected_account_id,
         "selected_profile_id": selected_profile_id,
+        # Standard-Mapping je Konto (Konto-ID -> Profil-ID): steuert im Formular, ob die Mapping-Auswahl entfaellt
+        "account_defaults": {
+            a.id: a.default_mapping_profile_id for a in accounts if a.default_mapping_profile_id is not None
+        },
         "history": recent_imports(session),
     }
 
@@ -96,12 +100,17 @@ def import_form(request: Request, session: Session = Depends(get_session)) -> HT
 async def run_import(
     request: Request,
     account_id: int = Form(...),
-    mapping_profile_id: int = Form(...),
+    mapping_profile_id: str = Form(""),
     csv_file: UploadFile = File(...),
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     account = session.get(Account, account_id)
-    profile = session.get(MappingProfile, mapping_profile_id)
+    # Ausdruecklich gewaehltes Profil (neues Konto oder "Anderes Mapping verwenden") hat Vorrang,
+    # sonst gilt das Standard-Mapping des Kontos.
+    explicit_profile_id = int(mapping_profile_id) if mapping_profile_id.isdigit() else None
+    effective_profile_id = explicit_profile_id or (account.default_mapping_profile_id if account else None)
+    profile = session.get(MappingProfile, effective_profile_id) if effective_profile_id else None
+    mapping_profile_id = effective_profile_id
 
     def _error(message: str, status_code: int = 400) -> HTMLResponse:
         return templates.TemplateResponse(
@@ -116,8 +125,10 @@ async def run_import(
             status_code=status_code,
         )
 
-    if account is None or profile is None:
-        return _error("Bitte ein gültiges Konto und Mapping-Profil auswählen.")
+    if account is None:
+        return _error("Bitte ein gültiges Konto auswählen.")
+    if profile is None:
+        return _error("Bitte ein Mapping-Profil auswählen (dem Konto ist noch keines zugeordnet).")
 
     raw = await csv_file.read()
     if not raw:
@@ -237,7 +248,15 @@ async def run_import(
         duplicate_count=len(duplicates),
         period_start=period_start,
         period_end=period_end,
+        mapping_profile_id=profile.id,
     )
+    # Erster Import eines Kontos ohne Standard-Mapping: die getroffene Wahl wird zum Standard. Hat das
+    # Konto schon eines, bleibt es unveraendert (ein abweichendes Profil gilt nur fuer diesen Import).
+    default_saved = False
+    if account.default_mapping_profile_id is None:
+        account.default_mapping_profile_id = profile.id
+        session.add(account)
+        default_saved = True
     session.commit()
 
     return templates.TemplateResponse(
@@ -247,6 +266,7 @@ async def run_import(
             "title": "CSV-Import",
             "active_nav": "import",
             "missing_bookings": missing_bookings,
+            "default_saved": default_saved,
             "account": account,
             "profile": profile,
             "total_rows": len(parsed_rows),

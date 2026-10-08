@@ -37,16 +37,29 @@
       </select>
     </div>
 
-    <div class="mt-4">
-      <label class="form-label">Mapping-Profil</label>
-      <select name="mapping_profile_id" required data-searchable class="form-input">
-        <option value="" disabled {% if not selected_profile_id %}selected{% endif %}>– bitte wählen –</option>
-        {% for profile in profiles %}
-        <option value="{{ profile.id }}" {% if selected_profile_id == profile.id %}selected{% endif %}>
-          {{ profile.name }}
-        </option>
-        {% endfor %}
-      </select>
+    {# Ist dem Konto ein Standard-Mapping zugeordnet (Einstellungen -> Konten), entfaellt die Auswahl:
+       stattdessen ein Hinweis mit eingeklapptem "Anderes Mapping verwenden". Ohne Standard wird wie bisher
+       gefragt und die Wahl nach dem Import als Standard des Kontos gespeichert (siehe imports.py). #}
+    <div class="mt-4" id="mapping-block" data-defaults="{{ account_defaults|tojson|forceescape }}">
+      <p id="mapping-default-info" class="hidden text-sm text-gray-600 dark:text-gray-400">
+        Mapping-Profil: <span id="mapping-default-name" class="font-medium text-gray-900 dark:text-gray-100"></span>
+        (Standard dieses Kontos) ·
+        <button type="button" id="mapping-override-link" class="text-accent underline">Anderes Mapping verwenden</button>
+      </p>
+      <div id="mapping-select-wrap">
+        <label class="form-label">Mapping-Profil</label>
+        <select name="mapping_profile_id" id="mapping-select" data-searchable class="form-input">
+          <option value="" disabled {% if not selected_profile_id %}selected{% endif %}>– bitte wählen –</option>
+          {% for profile in profiles %}
+          <option value="{{ profile.id }}" {% if selected_profile_id == profile.id %}selected{% endif %}>
+            {{ profile.name }}
+          </option>
+          {% endfor %}
+        </select>
+        <p id="mapping-save-hint" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Die Wahl wird nach dem Import als Standard für dieses Konto gespeichert.
+        </p>
+      </div>
     </div>
 
     <div class="mt-4">
@@ -67,6 +80,54 @@
   </form>
   {% endif %}
 </div>
+
+<script>
+  (function () {
+    var block = document.getElementById("mapping-block");
+    if (!block) return;
+    var defaults = JSON.parse(block.getAttribute("data-defaults") || "{}");
+    var accountSel = document.querySelector("select[name=account_id]");
+    var mapSel = document.getElementById("mapping-select");
+    var info = document.getElementById("mapping-default-info");
+    var wrap = document.getElementById("mapping-select-wrap");
+    var hint = document.getElementById("mapping-save-hint");
+    var override = false;
+
+    function setMapping(value) {
+      if (mapSel.tomselect) mapSel.tomselect.setValue(value, true);
+      else mapSel.value = value;
+    }
+    function sync(accountChanged) {
+      var def = defaults[accountSel.value];
+      if (accountChanged) override = false;
+      if (def && !override) {
+        setMapping(String(def));
+        var opt = mapSel.querySelector('option[value="' + def + '"]');
+        document.getElementById("mapping-default-name").textContent = opt ? opt.textContent.trim() : "";
+        info.classList.remove("hidden");
+        wrap.classList.add("hidden");
+        mapSel.required = false;
+      } else {
+        if (accountChanged && !def) setMapping("");
+        info.classList.add("hidden");
+        wrap.classList.remove("hidden");
+        mapSel.required = true;
+        hint.classList.toggle("hidden", !!def);
+      }
+    }
+    document.getElementById("mapping-override-link").addEventListener("click", function () {
+      override = true;
+      sync(false);
+    });
+    accountSel.addEventListener("change", function () { sync(true); });
+    document.addEventListener("DOMContentLoaded", function () {
+      var def = defaults[accountSel.value];
+      // Nach einem Formularfehler: ausdruecklich anderes Profil gewaehlt -> Auswahl offen lassen
+      override = !!(def && mapSel.value && mapSel.value !== String(def));
+      sync(false);
+    });
+  })();
+</script>
 
 {% if history %}
 <details class="card modal-wide">

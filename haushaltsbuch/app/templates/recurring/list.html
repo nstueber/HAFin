@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{# Eine erkannte Zahlung als Tabellenzeile. restore=True: Zeile in der Ignoriert-Liste (Button "Wieder einblenden"). #}
+{% macro series_row(s, restore=false) %}
+<tr class="recurring-row" data-payee-key="{{ s.payee_key }}">
+  <td class="font-medium text-gray-900 dark:text-gray-100">
+    <button
+      type="button"
+      class="text-left font-medium text-gray-900 hover:text-accent hover:underline dark:text-gray-100"
+      data-recurring-detail
+      onclick="hafinOpenDialog('/recurring/detail?account_id={{ s.account_id }}&sign={{ s.sign }}&first_id={{ s.first_id }}', 'recurring-detail-dialog', 'recurring-detail-content')"
+      title="Alle Buchungen dieser Reihe anzeigen"
+    >{{ s.payee }}</button>
+    <span class="block text-xs font-normal text-gray-500 dark:text-gray-400">{{ s.account_name }}</span>
+  </td>
+  <td data-label="Kategorie" class="text-xs text-gray-600 dark:text-gray-400">
+    {{ s.category }}
+    {% if s.categories_inconsistent %}
+    <button
+      type="button"
+      class="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold leading-none text-white"
+      data-flag="category-inconsistent"
+      aria-label="Uneinheitlich kategorisiert - Buchungen anzeigen"
+      title="Die Buchungen dieser Reihe haben unterschiedliche Kategorien - Klick zeigt alle Buchungen"
+      onclick="hafinOpenDialog('/recurring/detail?account_id={{ s.account_id }}&sign={{ s.sign }}&first_id={{ s.first_id }}', 'recurring-detail-dialog', 'recurring-detail-content')"
+    >!</button>
+    {% endif %}
+  </td>
+  <td data-label="Rhythmus" class="whitespace-nowrap text-xs">{{ s.period.label }} <span class="text-gray-400">({{ s.count }}×)</span></td>
+  <td data-label="Letzter Betrag" class="whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if s.last_amount > 0 else '' }}">
+    {{ s.last_amount|format_currency }}
+    {% if s.amount_changed %}
+    <span class="mt-1 block text-right font-sans text-xs font-medium text-amber-600 dark:text-amber-400" data-flag="amount-changed">
+      Betrag geändert: {{ s.usual_amount|format_currency }} → {{ s.last_amount|format_currency }}
+    </span>
+    {% endif %}
+  </td>
+  <td data-label="Letzte Buchung" class="whitespace-nowrap font-mono text-xs">{{ s.last_date.strftime("%d.%m.%Y") }}</td>
+  <td data-label="Nächste erwartet" class="whitespace-nowrap font-mono text-xs">
+    {{ s.next_expected.strftime("%d.%m.%Y") }}
+    {% if s.overdue_days is not none and not s.ended %}
+    <span class="mt-1 block font-sans text-xs font-medium text-amber-600 dark:text-amber-400" data-flag="overdue">
+      Erwartete Zahlung blieb bisher aus ({{ s.overdue_days }} Tage überfällig)
+    </span>
+    {% endif %}
+  </td>
+  <td class="text-right">
+    <form method="post" action="/recurring/{{ 'unignore' if restore else 'ignore' }}">
+      <input type="hidden" name="account_id" value="{{ s.account_id }}" />
+      <input type="hidden" name="payee_key" value="{{ s.payee_key }}" />
+      <input type="hidden" name="sign" value="{{ s.sign }}" />
+      <button type="submit" class="btn-outline !px-3 !py-1.5 !text-xs" {% if not restore %}title="Diese Gruppe dauerhaft ausblenden - die Buchungen bleiben unverändert"{% endif %}>
+        {{ "Wieder einblenden" if restore else "Ignorieren" }}
+      </button>
+    </form>
+  </td>
+</tr>
+{% endmacro %}
+
+{% macro series_table(items, restore=false, table_id="") %}
+<div class="overflow-x-auto">
+  <table class="table-base table-stack" {% if table_id %}id="{{ table_id }}"{% endif %}>
+    <thead>
+      <tr>
+        <th>Bezeichnung</th>
+        <th>Kategorie</th>
+        <th>Rhythmus</th>
+        <th class="text-right">Letzter Betrag</th>
+        <th>Letzte Buchung</th>
+        <th>Nächste erwartet</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in items %}{{ series_row(s, restore) }}{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="card">
+  <h2 class="text-base font-semibold">Wiederkehrende Zahlungen</h2>
+  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    Automatisch aus den Buchungen erkannte Daueraufträge und Abos: je Konto gleicher oder ähnlicher
+    Auftraggeber, ähnlicher Betrag und ein erkennbarer Rhythmus (wöchentlich, monatlich, vierteljährlich,
+    jährlich) - mindestens {{ min_occurrences }} Buchungen. Umbuchungen zwischen eigenen Konten zählen nicht.
+  </p>
+
+  {% if active %}
+  <div class="mt-4" id="recurring-active">{{ series_table(active, table_id="recurring-table") }}</div>
+  {% else %}
+  <p class="mt-4 text-sm text-gray-500 dark:text-gray-400" id="recurring-empty">
+    Noch keine wiederkehrenden Zahlungen erkannt.
+  </p>
+  {% endif %}
+</div>
+
+<dialog id="recurring-detail-dialog" class="card modal-wide backdrop:bg-gray-900/50">
+  <div id="recurring-detail-content"></div>
+</dialog>
+
+{% if ended %}
+<details class="card" id="recurring-ended">
+  <summary class="cursor-pointer text-base font-semibold marker:text-gray-400">Vermutlich beendet ({{ ended|length }})</summary>
+  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+    Seit mehr als zwei erwarteten Zahlungsperioden keine neue Buchung - vermutlich gekündigt. Ohne Hinweis-Badge.
+  </p>
+  <div class="mt-3">{{ series_table(ended) }}</div>
+</details>
+{% endif %}
+
+{% if ignored %}
+<details class="card" id="recurring-ignored">
+  <summary class="cursor-pointer text-base font-semibold marker:text-gray-400">Ignoriert ({{ ignored|length }})</summary>
+  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+    Diese Gruppen sind aus der Übersicht ausgeblendet. Die zugrunde liegenden Buchungen sind unverändert.
+  </p>
+  <div class="mt-3">{{ series_table(ignored, restore=true) }}</div>
+</details>
+{% endif %}
+{% endblock %}

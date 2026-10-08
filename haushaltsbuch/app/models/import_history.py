@@ -26,3 +26,6 @@ class ImportHistoryEntry(SQLModel, table=True):
     duplicate_count: int = 0
     period_start: Optional[date] = None
     period_end: Optional[date] = None
+    # Beim Import verwendetes Mapping-Profil (ohne FK, wie account_id) - Grundlage der einmaligen
+    # Migration "Standard-Mapping je Konto"; aeltere Eintraege haben hier None.
+    mapping_profile_id: Optional[int] = None

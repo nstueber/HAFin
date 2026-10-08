@@ -23,6 +23,7 @@
           {{ sort_th("Anzeigename", "name") }}
           {{ sort_th("IBAN", "iban") }}
           {{ sort_th("Bank", "bank") }}
+          {{ sort_th("Mapping-Profil", "mapping") }}
           <th></th>
         </tr>
       </thead>
@@ -32,6 +33,7 @@
           <td class="name font-medium text-gray-900 dark:text-gray-100">{{ account.display_name }}</td>
           <td class="iban font-mono text-xs" data-label="IBAN">{{ account.iban|format_iban }}</td>
           <td class="bank" data-label="Bank">{{ account.bank_name or "–" }}</td>
+          <td class="mapping" data-label="Mapping-Profil">{{ profile_names.get(account.default_mapping_profile_id, "–") }}</td>
           <td class="text-right">
             <div class="flex justify-end gap-1">
               <a href="/accounts/{{ account.id }}/edit" class="btn-ghost-icon" aria-label="Bearbeiten">
@@ -57,7 +59,7 @@
     </div>
   </div>
   <script>
-    hafinInitTable("accounts-table", ["name", "iban", "bank"]);
+    hafinInitTable("accounts-table", ["name", "iban", "bank", "mapping"]);
   </script>
   {% else %}
   <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Noch keine Konten angelegt.</p>

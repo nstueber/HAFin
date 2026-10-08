@@ -8,6 +8,12 @@
     Konto <span class="font-medium text-gray-700 dark:text-gray-300">{{ account.display_name }}</span>
     · Mapping-Profil <span class="font-medium text-gray-700 dark:text-gray-300">{{ profile.name }}</span>
   </p>
+  {% if default_saved %}
+  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" id="mapping-default-saved">
+    „{{ profile.name }}“ wurde als Standard-Mapping für dieses Konto gespeichert - beim nächsten Import entfällt die Auswahl
+    (änderbar unter Einstellungen → Konten).
+  </p>
+  {% endif %}
 
   <dl class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
     <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-800">

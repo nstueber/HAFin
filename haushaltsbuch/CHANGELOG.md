@@ -6,6 +6,36 @@ Alle nennenswerten Änderungen an dieser App werden hier festgehalten. Das Forma
 
 ## [Unveröffentlicht]
 
+## [0.6.1] - 2026-10-08
+
+### Hinzugefügt
+- **Wiederkehrende Zahlungen / Abo-Tracking:** neue Seite mit automatisch erkannten Daueraufträgen und
+  Abos (je Konto gleicher/ähnlicher Auftraggeber, ähnlicher Betrag, erkennbarer Rhythmus
+  wöchentlich/monatlich/vierteljährlich/jährlich, mindestens 3 Buchungen) mit Kategorie, Rhythmus,
+  letztem Betrag, letzter Buchung und nächstem erwarteten Datum. Hinweise „Betrag geändert“ (alter und
+  neuer Betrag) und „Erwartete Zahlung blieb bisher aus“, „Ignorieren“ für falsch erkannte Gruppen
+  (Buchungen bleiben unverändert, rückgängig unter „Ignoriert“) und ein Badge mit der Anzahl offener
+  Hinweise am neuen Navigationspunkt. Angezeigt wird die Kategorie der jüngsten kategorisierten Buchung
+  der Reihe; sind die kategorisierten Buchungen uneinheitlich kategorisiert, markiert ein Ausrufezeichen die
+  Reihe.
+- **Dashboard: „Benutzerdefiniert“:** neben Tag/Woche/Monat/Jahr ein frei wählbarer Zeitraum mit Von-/
+  Bis-Datum. Navigationspfeile, Vorzeitraumsvergleich und Budgets entfallen dort, da es keinen
+  definierten vorherigen/nächsten Zeitraum gibt.
+- **Wiederkehrende Zahlungen: Detailansicht:** Klick auf die Bezeichnung öffnet alle Buchungen der Reihe
+  (sortierbar: Datum, Betrag, Kategorie - die Kategorie lässt sich direkt je Buchung korrigieren) und
+  „Betrag in den letzten 12 Monaten“ (bei kürzer bekannten Reihen mit dem tatsächlich abgedeckten Zeitraum).
+- **Backup/Restore:** die Ignorier-Liste der wiederkehrenden Zahlungen ist jetzt eine eigene, optionale
+  Datengruppe („Ignorierte wiederkehrende Zahlungen“, setzt Konten voraus) - nach Backup und Restore bleiben
+  die „Ignorieren“-Entscheidungen erhalten. Ältere Backups bleiben importierbar.
+
+### Geändert
+- **Standard-Mapping je Konto:** in Einstellungen → Konten lässt sich einem Konto ein Mapping-Profil
+  zuordnen, das beim Import automatisch verwendet wird (die Auswahl entfällt; „Anderes Mapping
+  verwenden“ erlaubt eine einmalige Ausnahme). Hat ein Konto noch keines, wird die Wahl beim ersten
+  Import als Standard gespeichert. Die Zuordnung ist Teil des Backups. Bei bestehenden Konten wird sie
+  einmalig übernommen, wenn es im ganzen System genau ein Mapping-Profil gibt; bei mehreren Profilen bleibt
+  sie leer (die Import-Historie aus 0.5.x enthält kein Profil) und entsteht beim nächsten Import.
+
 ## [0.5.1] - 2026-09-30
 
 ### Hinzugefügt

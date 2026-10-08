@@ -25,6 +25,9 @@ from app.templating import templates
 router = APIRouter(tags=["dashboard"])
 
 GRANULARITIES = ("day", "week", "month", "year")
+# "custom" = frei gewaehltes Von-Bis (Parameter date_from/date_to): kein definierter vorheriger/naechster
+# Zeitraum -> keine Navigationspfeile, kein Vorzeitraumsvergleich, keine Budgets (siehe dashboard()).
+PERIODS = GRANULARITIES + ("custom",)
 TRANSFER_MODES = ("all", "only", "hide")
 # Umbuchungsfilter, wenn die URL keinen ``transfers``-Parameter enthaelt (erstes Laden, Menue-Link "Uebersicht").
 # Der Filterzustand lebt ausschliesslich in der URL (kein localStorage/Cookie) - ein ausdruecklich gewaehlter Wert,
@@ -71,7 +74,35 @@ def _shift_ref(granularity: str, start: date, direction: int) -> date:
     return _add_months(start, direction)
 
 
+def _parse_date(value: Optional[str]) -> Optional[date]:
+    try:
+        return date.fromisoformat(value) if value else None
+    except ValueError:
+        return None
+
+
+def _resolve_period(
+    granularity: str, ref_date: date, date_from: Optional[str], date_to: Optional[str]
+) -> tuple[date, date]:
+    """Start-/Ende des gewaehlten Zeitraums. Bei "custom" aus date_from/date_to (beide fehlend/ungueltig ->
+    Monatsanfang bis heute, nur eines fehlend -> eintaegig, vertauschte Grenzen werden getauscht), sonst
+    wie bisher der Zeitraum, der ``ref_date`` enthaelt."""
+    if granularity != "custom":
+        return _period_bounds(granularity, ref_date)
+    start, end = _parse_date(date_from), _parse_date(date_to)
+    if start is None and end is None:
+        today = date.today()
+        start, end = today.replace(day=1), today
+    elif start is None:
+        start = end
+    elif end is None:
+        end = start
+    return (start, end) if start <= end else (end, start)
+
+
 def _period_label(granularity: str, start: date, end: date) -> str:
+    if granularity == "custom":
+        return f"{start.strftime('%d.%m.%Y')} – {end.strftime('%d.%m.%Y')}"
     if granularity == "day":
         return f"{start.day}. {MONTH_NAMES_DE[start.month - 1]} {start.year}"
     if granularity == "week":
@@ -88,8 +119,12 @@ def _dashboard_url(
     transfers: str,
     account_id: Optional[int],
     compare: bool = False,
+    custom_end: Optional[date] = None,
 ) -> str:
     params = [f"granularity={granularity}", f"ref={ref.isoformat()}"]
+    if granularity == "custom":
+        params.append(f"date_from={ref.isoformat()}")
+        params.append(f"date_to={(custom_end or ref).isoformat()}")
     if transfers != DEFAULT_TRANSFERS:
         params.append(f"transfers={transfers}")
     if account_id is not None:
@@ -197,6 +232,7 @@ def _drilldown_url(
     kind: str,
     category_key: Optional[str] = None,
     exact: bool = False,
+    custom_end: Optional[date] = None,
 ) -> str:
     params = [
         f"granularity={granularity}",
@@ -204,6 +240,9 @@ def _drilldown_url(
         f"transfers={transfers}",
         f"kind={kind}",
     ]
+    if granularity == "custom":
+        params.append(f"date_from={ref.isoformat()}")
+        params.append(f"date_to={(custom_end or ref).isoformat()}")
     if account_id is not None:
         params.append(f"account_id={account_id}")
     if category_key is not None:
@@ -245,6 +284,7 @@ def _category_chart_data(
     transfers: str,
     account_id_int: Optional[int],
     prev_top_sums: Optional[dict] = None,
+    custom_end: Optional[date] = None,
 ) -> dict:
     """Baut die fuer Chart.js direkt verwendbaren Datenstrukturen der Kategorie-Aufschluesselung -
     getrennt nach Kategorie-Typ: ``{"expense": ..., "income": ...}`` (Ausgaben- bzw. Einnahmen-Diagramm).
@@ -336,6 +376,7 @@ def _category_chart_data(
                             "category",
                             "uncategorized" if seg["category_id"] is None else str(seg["category_id"]),
                             exact=True,
+                            custom_end=custom_end,
                         ),
                     }
                 )
@@ -345,7 +386,9 @@ def _category_chart_data(
             "simple_amounts": [i["amount"] for i in top_items],
             "simple_uncategorized": [i["uncategorized"] for i in top_items],
             "simple_urls": [
-                _drilldown_url(granularity, ref_date, transfers, account_id_int, "category", i["key"])
+                _drilldown_url(
+                    granularity, ref_date, transfers, account_id_int, "category", i["key"], custom_end=custom_end
+                )
                 for i in top_items
             ],
             "diffs": [i["diff"] for i in top_items] if prev_top_sums is not None else None,
@@ -445,15 +488,18 @@ def dashboard(
     transfers: str = DEFAULT_TRANSFERS,
     account_id: str = "",
     compare: str = "",
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
-    if granularity not in GRANULARITIES:
+    if granularity not in PERIODS:
         granularity = "month"
     if transfers not in TRANSFER_MODES:
         transfers = DEFAULT_TRANSFERS
     # Wie granularity/transfers: ein Rohstring statt bool, damit ein ungueltiger/handgeschriebener
     # Wert nicht mit 422 abgewiesen wird, sondern (wie ueberall sonst) still auf den Standard faellt.
-    compare_flag = compare == "1"
+    # Beim benutzerdefinierten Zeitraum gibt es keinen "vorherigen" Zeitraum -> kein Vergleich.
+    compare_flag = compare == "1" and granularity != "custom"
     # Das Konto-Filter-<select> submitted bei "Alle Konten" einen leeren String
     # (nicht abwesend) - "" laesst sich nicht direkt in int parsen.
     account_id_int = int(account_id) if account_id else None
@@ -462,7 +508,9 @@ def dashboard(
     except ValueError:
         ref_date = date.today()
 
-    start, end = _period_bounds(granularity, ref_date)
+    start, end = _resolve_period(granularity, ref_date, date_from, date_to)
+    if granularity == "custom":
+        ref_date = start  # Anker fuer die URLs der anderen Zeitraeume (Tag/Woche/Monat/Jahr)
 
     accounts = session.exec(select(Account).order_by(Account.display_name)).all()
     if account_id_int is not None and account_id_int not in {a.id for a in accounts}:
@@ -476,9 +524,8 @@ def dashboard(
 
     def _tile_urls(acc_id: Optional[int]) -> dict:
         return {
-            "income": _drilldown_url(granularity, ref_date, transfers, acc_id, "income"),
-            "expense": _drilldown_url(granularity, ref_date, transfers, acc_id, "expense"),
-            "net": _drilldown_url(granularity, ref_date, transfers, acc_id, "net"),
+            kind: _drilldown_url(granularity, ref_date, transfers, acc_id, kind, custom_end=end)
+            for kind in ("income", "expense", "net")
         }
 
     total_tile = {**_income_expense_net(txns), "urls": _tile_urls(None)}
@@ -498,8 +545,11 @@ def dashboard(
     splits_by_txn_id = _splits_by_transaction(session, [t.id for t in breakdown_txns])
     breakdown_entries = _category_entries(breakdown_txns, categories_by_id, splits_by_txn_id)
 
-    prev_ref = _shift_ref(granularity, start, -1)
-    next_ref = _shift_ref(granularity, start, 1)
+    custom = granularity == "custom"
+    prev_ref = next_ref = ref_date if custom else None
+    if not custom:
+        prev_ref = _shift_ref(granularity, start, -1)
+        next_ref = _shift_ref(granularity, start, 1)
 
     # Vorzeitraumsvergleich: derselbe direkt vorherige Zeitraum wie beim "<"-Navigationspfeil
     # (identische _shift_ref()/_period_bounds()-Berechnung - Monats-/Jahresgrenzen also garantiert
@@ -524,6 +574,7 @@ def dashboard(
         transfers,
         account_id_int,
         prev_top_sums,
+        custom_end=end,
     )
 
     # Budgets sind monatliche Werte: in der Monatsansicht direkt, in der Jahresansicht x 12; bei Tag/Woche
@@ -543,10 +594,15 @@ def dashboard(
             "granularity": granularity,
             "period_label": _period_label(granularity, start, end),
             "url_granularity": {
-                g: _dashboard_url(g, ref_date, transfers, account_id_int, compare_flag) for g in GRANULARITIES
+                **{g: _dashboard_url(g, ref_date, transfers, account_id_int, compare_flag) for g in GRANULARITIES},
+                # beim Wechsel zu "Benutzerdefiniert" ist der bisherige Zeitraum vorbelegt
+                "custom": _dashboard_url("custom", start, transfers, account_id_int, False, custom_end=end),
             },
-            "url_prev": _dashboard_url(granularity, prev_ref, transfers, account_id_int, compare_flag),
-            "url_next": _dashboard_url(granularity, next_ref, transfers, account_id_int, compare_flag),
+            "custom": custom,
+            "date_from": start.isoformat(),
+            "date_to": end.isoformat(),
+            "url_prev": None if custom else _dashboard_url(granularity, prev_ref, transfers, account_id_int, compare_flag),
+            "url_next": None if custom else _dashboard_url(granularity, next_ref, transfers, account_id_int, compare_flag),
             "transfers": transfers,
             "compare": compare_flag,
             "budget_items": budget_items,
@@ -570,13 +626,15 @@ def dashboard_transactions(
     kind: str = "net",
     category: str = "",
     exact: bool = False,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     """Liefert die Buchungen hinter einer angeklickten Zahl im Dashboard (Kennzahlen-
     Kachel oder Kategorie-Balken) als Fragment fuer das Drilldown-Modal - beruecksichtigt
     dieselben Zeitraum-/Konto-/Umbuchungsfilter wie die Dashboard-Ansicht selbst.
     """
-    if granularity not in GRANULARITIES:
+    if granularity not in PERIODS:
         granularity = "month"
     if transfers not in TRANSFER_MODES:
         transfers = DEFAULT_TRANSFERS
@@ -588,7 +646,7 @@ def dashboard_transactions(
     except ValueError:
         ref_date = date.today()
 
-    start, end = _period_bounds(granularity, ref_date)
+    start, end = _resolve_period(granularity, ref_date, date_from, date_to)
     txns = _period_transactions(session, start, end, transfers)
     if account_id_int is not None:
         txns = [t for t in txns if t.account_id == account_id_int]

@@ -1,0 +1,89 @@
+{% from "_table.html" import sort_th %}
+{% if not series %}
+<p class="text-sm text-gray-600 dark:text-gray-400">Diese wiederkehrende Zahlung wird nicht mehr erkannt (Buchungen wurden geändert oder gelöscht).</p>
+<div class="mt-4 flex justify-end">
+  <button type="button" class="btn-outline" onclick="document.getElementById('recurring-detail-dialog').close()">Schließen</button>
+</div>
+{% else %}
+<h3 class="text-base font-semibold">{{ series.payee }}</h3>
+<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+  {{ series.account_name }} · {{ series.period.label }} · <span id="recurring-detail-count">{{ rows|length }}</span> Buchungen
+</p>
+
+<div class="mt-4 rounded-lg border border-gray-200 px-4 py-3 dark:border-gray-800" id="recurring-twelve-months">
+  <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400" data-summary-label>{{ summary.label }}</p>
+  <p class="mt-1 text-lg font-semibold font-mono {{ 'text-green-600 dark:text-green-400' if summary.total > 0 else '' }}" data-summary-total>{{ summary.total|format_currency }}</p>
+  <p class="text-xs text-gray-500 dark:text-gray-400">{{ summary.count }} Buchung{{ 'en' if summary.count != 1 else '' }} in diesem Zeitraum</p>
+</div>
+
+{% if series.categories_inconsistent %}
+<p class="alert-error mt-4 !border-amber-200 !bg-amber-50 !text-amber-800 dark:!border-amber-900/50 dark:!bg-amber-950/40 dark:!text-amber-300" id="recurring-inconsistent-note">
+  Die Buchungen dieser Reihe sind uneinheitlich kategorisiert - die Kategorie lässt sich hier direkt je Buchung korrigieren.
+</p>
+{% endif %}
+
+<div id="recurring-detail-table" class="mt-4">
+  <div class="max-h-96 overflow-y-auto overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
+    <table class="table-base table-stack">
+      <thead>
+        <tr>
+          {{ sort_th("Datum", "date") }}
+          {{ sort_th("Betrag", "amount", "text-right") }}
+          {{ sort_th("Kategorie", "category") }}
+        </tr>
+      </thead>
+      <tbody class="list">
+        {% for r in rows %}
+        <tr data-txn-id="{{ r.txn.id }}">
+          <td class="date whitespace-nowrap font-mono text-xs" data-label="Datum">{{ r.txn.booking_date.isoformat() }}</td>
+          <td class="amount whitespace-nowrap text-right font-mono {{ 'text-green-600 dark:text-green-400' if r.txn.amount > 0 else '' }}" data-label="Betrag">{{ r.txn.amount|format_currency }}</td>
+          <td class="min-w-[14rem]" data-label="Kategorie">
+            <span class="category hidden">{{ r.category_name }}</span>
+            {# Native Auswahl statt Tom Select: ein durchsuchbares Dropdown wuerde im scrollenden Tabellenbereich abgeschnitten #}
+            <select
+              name="category_id"
+              class="form-input !py-1.5 !text-xs"
+              aria-label="Kategorie von {{ r.txn.booking_date.isoformat() }}"
+              hx-post="/transactions/{{ r.txn.id }}/category"
+              hx-trigger="change"
+              hx-target="#recurring-category-result"
+              hx-swap="innerHTML"
+              onchange="document.getElementById('recurring-detail-dialog').dataset.changed = '1'"
+            >
+              <option value="" {% if not r.txn.category_id %}selected{% endif %}>Unkategorisiert</option>
+              {% for group in category_groups %}
+                {% if group.children %}
+                <optgroup label="{{ group.name }}">
+                  <option value="{{ group.id }}" {% if r.txn.category_id == group.id %}selected{% endif %}>{{ group.name }} (allgemein)</option>
+                  {% for child in group.children %}
+                  <option value="{{ child.id }}" {% if r.txn.category_id == child.id %}selected{% endif %}>{{ child.name }}</option>
+                  {% endfor %}
+                </optgroup>
+                {% else %}
+                <option value="{{ group.id }}" {% if r.txn.category_id == group.id %}selected{% endif %}>{{ group.name }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<div id="recurring-category-result" class="hidden"></div>
+<script>
+  (function () {
+    hafinInitTable("recurring-detail-table", ["date", "amount", "category"], "recurring-detail-count");
+    var dialog = document.getElementById("recurring-detail-dialog");
+    delete dialog.dataset.changed;
+    // Nach einer Kategorie-Korrektur Seite neu laden, damit Kategorie/Hinweis der Liste stimmen
+    dialog.addEventListener("close", function () {
+      if (dialog.dataset.changed) window.location.reload();
+    }, { once: true });
+  })();
+</script>
+<div class="mt-4 flex justify-end">
+  <button type="button" class="btn-outline" onclick="document.getElementById('recurring-detail-dialog').close()">Schließen</button>
+</div>
+{% endif %}
